@@ -30,6 +30,14 @@ This is a from-scratch design replacing the vendored archived `Sourcetrail/` sub
 
 Build via maturin (mixed layout): `uv sync` resolves Python deps AND invokes maturin to build the Rust extension. The maturin manifest path is in `pyproject.toml` under `[tool.maturin]`.
 
+**After editing any Rust source, rebuild before Python picks up the change** — Python imports the compiled `prograph/_core.*.so`, not the crate:
+
+```sh
+uv run maturin develop            # recompile + reinstall the extension in the venv
+```
+
+`cargo test` exercises Rust logic without rebuilding the extension, but pytest/CLI/MCP will keep running the stale `.so` until you `maturin develop`. Regenerate the type stub (`prograph/_core.pyi`) by hand when the PyO3 surface changes — it is not auto-generated.
+
 ### Tooling pins worth knowing
 
 - `tempfile = "=3.15.0"` is an exact pin in `prograph-core/Cargo.toml` because newer `tempfile` pulls `rustix 1.x` which needs Rust 1.77+.
@@ -53,6 +61,10 @@ cargo test --all-targets                     # Rust tests
 uv run pytest -v                             # Python tests (excludes realmonorepo + bench)
 uv run pytest -m realmonorepo -v             # opt-in real-monorepo smoke
 uv run pytest -m bench -v                    # opt-in performance baselines
+uv run pytest tests/unit/test_models.py -v   # single file
+uv run pytest tests/unit/test_models.py::test_name   # single test
+uv run pytest -k drift                        # tests matching a keyword
+cargo test --all-targets drift               # single Rust module/test by name
 
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
@@ -139,5 +151,7 @@ Then `git diff` to review the change before committing.
 
 - Type hints throughout Python (pyrefly enforces).
 - Use uv (never pip).
+- Ruff line-length is **100** here (`pyproject.toml [tool.ruff]`), not the 88 from the global guidelines — this project's config wins. `tests/fixtures/` is excluded from lint/format because its `.py` files carry intentionally-shaped imports/symbols for the parser.
+- Always run pyrefly via the CLI with explicit globs (`uv run pyrefly check 'prograph/**/*.py' ...`), never bare `pyrefly check` in project mode — project-mode excludes collide with `.gitignore`'s `*.py[cod]` line (misread as `*.py*`). See the `[tool.pyrefly]` comment in `pyproject.toml`.
 - Follow `.gitignore`'s `/.prograph/graph.db` etc. patterns so prograph self-hosting artefacts stay out of git.
-- The `Sourcetrail/` subdir is its own git repository; don't recurse into it from our toolchain.
+- The `Sourcetrail/` subdir is its own git repository; don't recurse into it from our toolchain. It is also listed in `pyproject.toml [tool.prograph] exclude` so workspace recursion skips it.

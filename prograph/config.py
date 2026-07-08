@@ -16,9 +16,28 @@ def read_auto_export(config_path: Path) -> bool:
         return False
     try:
         data = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, tomllib.TOMLDecodeError):
         return False
     output = data.get("output")
     if not isinstance(output, dict):
         return False
     return bool(output.get("auto_export", False))
+
+
+def read_export_root(config_path: Path) -> str | None:
+    """Return `[output] export_root` from `.prograph/config.toml`, or None.
+
+    Tolerant of a missing file, missing section/key, malformed TOML, or a
+    non-string value — all yield None so callers fall back to the default.
+    """
+    if not config_path.is_file():
+        return None
+    try:
+        data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    output = data.get("output")
+    if not isinstance(output, dict):
+        return None
+    value = output.get("export_root")
+    return value if isinstance(value, str) else None
