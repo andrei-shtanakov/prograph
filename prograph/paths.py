@@ -8,12 +8,13 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class PrographPaths:
-    """All filesystem paths under `<monorepo_root>/.prograph/`.
+    """Filesystem layout for a monorepo's prograph artefacts.
 
     Internal artefacts (db, config, lock, log, mcp_patterns) always live under
-    `.prograph/`. Markdown export (`projects/`, `contracts/`, `index.md`) lives
-    under `export_root` when set, otherwise under `.prograph/`. A relative
-    `export_root` resolves against `monorepo_root`; an absolute one is used as-is.
+    `<monorepo_root>/.prograph/`. Markdown export (`projects/`, `contracts/`,
+    `index.md`) lives under `export_root` when set — which may resolve outside
+    `.prograph/` — otherwise under `.prograph/`. A relative `export_root`
+    resolves against `monorepo_root`; an absolute one is used as-is.
     """
 
     monorepo_root: Path

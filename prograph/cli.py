@@ -55,8 +55,9 @@ include = []
 exclude = ["target", "node_modules", "dist", "build", "__pycache__"]
 
 [output]
-# When true, `prograph index` automatically writes MD files to .prograph/{projects,contracts}/
-# and .prograph/index.md. Same effect as passing `--export-md` to every invocation.
+# When true, `prograph index` automatically writes the MD export after indexing — same effect as
+# passing `--export-md` to every invocation. Files land under `export_root` (see below) if set,
+# otherwise .prograph/{projects,contracts}/ + .prograph/index.md.
 auto_export = false
 # export_root: where MD export (projects/, contracts/, index.md) is written. Relative to the
 # monorepo root; the database and internal artefacts stay in .prograph/ regardless. Overridden

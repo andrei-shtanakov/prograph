@@ -16,7 +16,7 @@ def read_auto_export(config_path: Path) -> bool:
         return False
     try:
         data = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, tomllib.TOMLDecodeError):
         return False
     output = data.get("output")
     if not isinstance(output, dict):
@@ -34,7 +34,7 @@ def read_export_root(config_path: Path) -> str | None:
         return None
     try:
         data = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, tomllib.TOMLDecodeError):
         return None
     output = data.get("output")
     if not isinstance(output, dict):
