@@ -1,0 +1,8 @@
+[package]
+name = "rust-consumer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rust-publisher = "1.0"
+serde = "1"

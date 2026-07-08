@@ -1,0 +1,73 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "prograph"
+version = "0.1.0"
+description = "Monorepo cross-project structure mapper"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Andrei Shtanakov" }]
+dependencies = [
+    "pydantic>=2.7,<3",
+    "typer>=0.12,<1",
+    "rich>=13",
+    "mcp>=1.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+
+[project.scripts]
+prograph = "prograph.cli:app"
+
+[tool.prograph]
+# Sourcetrail/ is a vendored archived C++/Qt5 project kept as historical
+# reference (its own .git, untouched by our build). Without this exclude,
+# workspace recursion picks it up as a docs project because it has README.md.
+exclude = ["Sourcetrail"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-subprocess>=1.5",
+    "pytest-asyncio>=0.23",
+    "pytest-benchmark>=4.0",
+    "ruff>=0.5",
+    "pyrefly>=0.6",
+    "maturin>=1.7,<2",
+]
+
+[tool.maturin]
+manifest-path = "prograph-core/Cargo.toml"
+module-name = "prograph._core"
+python-source = "."
+features = ["pyo3/extension-module"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "realmonorepo: opt-in smoke test against the real all_ai_orchestrators/ monorepo",
+    "bench: opt-in performance baseline (excluded from default test run)",
+]
+addopts = "-ra -q -m 'not realmonorepo and not bench'"
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Test fixture .py files contain intentionally-shaped imports/symbols that
+# exercise the parser — exclude them from lint/format pressure.
+extend-exclude = ["tests/fixtures/"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "RUF"]
+
+[tool.pyrefly]
+# Invoke pyrefly via the CLI with explicit globs (`uv run pyrefly check
+# 'prograph/**/*.py' 'tests/**/*.py'`). When pyrefly runs in project mode and
+# discovers this config, its `project_excludes` handling collides with our
+# `.gitignore` (the standard `*.py[cod]` line is misinterpreted as `*.py*`).
+# We keep this minimal section so pyrefly identifies the project root.
+project-includes = ["prograph/**/*.py", "tests/unit/**/*.py", "tests/integration/**/*.py"]
+use-ignore-files = false

@@ -1,0 +1,8 @@
+{
+  "name": "js-consumer",
+  "version": "0.1.0",
+  "dependencies": {
+    "js-publisher": "^1.0.0",
+    "react": "^18.2.0"
+  }
+}

@@ -1,0 +1,6 @@
+[project]
+name = "outer-python"
+version = "0.1.0"
+
+[tool.uv.workspace]
+members = ["sub_a", "sub_b"]

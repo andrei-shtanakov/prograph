@@ -1,0 +1,218 @@
+{
+    "machine_info": {
+        "node": "EPGETBIW050F",
+        "processor": "arm",
+        "machine": "arm64",
+        "python_compiler": "Clang 20.1.4 ",
+        "python_implementation": "CPython",
+        "python_implementation_version": "3.13.7",
+        "python_version": "3.13.7",
+        "python_build": [
+            "main",
+            "Sep  2 2025 14:05:52"
+        ],
+        "release": "25.5.0",
+        "system": "Darwin",
+        "cpu": {
+            "python_version": "3.13.7.final.0 (64 bit)",
+            "cpuinfo_version": [
+                9,
+                0,
+                0
+            ],
+            "cpuinfo_version_string": "9.0.0",
+            "arch": "ARM_8",
+            "bits": 64,
+            "count": 12,
+            "arch_string_raw": "arm64",
+            "brand_raw": "Apple M4 Pro"
+        }
+    },
+    "commit_info": {
+        "id": "3bfd4ff9385c1f60af9cb3c88c6701a47f1c960a",
+        "time": "2026-05-26T17:41:30+04:00",
+        "author_time": "2026-05-26T17:41:30+04:00",
+        "dirty": true,
+        "project": "prograph",
+        "branch": "worktree-prograph-m8"
+    },
+    "benchmarks": [
+        {
+            "group": null,
+            "name": "test_bench_monorepo_overview",
+            "fullname": "tests/integration/test_bench_baseline.py::test_bench_monorepo_overview",
+            "params": null,
+            "param": null,
+            "extra_info": {},
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 0.0003417499829083681,
+                "max": 0.0009738750522956252,
+                "mean": 0.00046153754547086296,
+                "stddev": 7.331816006955695e-05,
+                "rounds": 1225,
+                "median": 0.0004522919189184904,
+                "iqr": 9.877077536657453e-05,
+                "q1": 0.00040360420825891197,
+                "q3": 0.0005023749836254865,
+                "iqr_outliers": 17,
+                "stddev_outliers": 327,
+                "outliers": "327;17",
+                "ld15iqr": 0.0003417499829083681,
+                "hd15iqr": 0.0006518749287351966,
+                "ops": 2166.670967103651,
+                "total": 0.5653834932018071,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_bench_describe_project",
+            "fullname": "tests/integration/test_bench_baseline.py::test_bench_describe_project",
+            "params": null,
+            "param": null,
+            "extra_info": {},
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 0.00031991698779165745,
+                "max": 0.008353292010724545,
+                "mean": 0.00045895689546092557,
+                "stddev": 0.0002747090714718151,
+                "rounds": 1983,
+                "median": 0.00041904207319021225,
+                "iqr": 0.00012564598000608385,
+                "q1": 0.000378094264306128,
+                "q3": 0.0005037402443122119,
+                "iqr_outliers": 39,
+                "stddev_outliers": 24,
+                "outliers": "24;39",
+                "ld15iqr": 0.00031991698779165745,
+                "hd15iqr": 0.0006943750195205212,
+                "ops": 2178.8538529216576,
+                "total": 0.9101115236990154,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_bench_find_edges",
+            "fullname": "tests/integration/test_bench_baseline.py::test_bench_find_edges",
+            "params": null,
+            "param": null,
+            "extra_info": {},
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 0.00029691692907363176,
+                "max": 0.00759458402171731,
+                "mean": 0.0004083047553261802,
+                "stddev": 0.00018805681242306597,
+                "rounds": 2707,
+                "median": 0.0003729170421138406,
+                "iqr": 7.699933485127985e-05,
+                "q1": 0.0003546669613569975,
+                "q3": 0.00043166629620827734,
+                "iqr_outliers": 142,
+                "stddev_outliers": 62,
+                "outliers": "62;142",
+                "ld15iqr": 0.00029691692907363176,
+                "hd15iqr": 0.0005481670377776027,
+                "ops": 2449.15100046076,
+                "total": 1.1052809726679698,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_bench_search_fts",
+            "fullname": "tests/integration/test_bench_baseline.py::test_bench_search_fts",
+            "params": null,
+            "param": null,
+            "extra_info": {},
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 0.00031337502878159285,
+                "max": 0.0009589160326868296,
+                "mean": 0.0003940417477439297,
+                "stddev": 5.834463379083165e-05,
+                "rounds": 1877,
+                "median": 0.00037570891436189413,
+                "iqr": 3.982274211011827e-05,
+                "q1": 0.00036073976662009954,
+                "q3": 0.0004005625087302178,
+                "iqr_outliers": 228,
+                "stddev_outliers": 266,
+                "outliers": "266;228",
+                "ld15iqr": 0.00031337502878159285,
+                "hd15iqr": 0.00046033295802772045,
+                "ops": 2537.802163667835,
+                "total": 0.7396163605153561,
+                "iterations": 1
+            }
+        },
+        {
+            "group": null,
+            "name": "test_bench_reindex_no_changes",
+            "fullname": "tests/integration/test_bench_baseline.py::test_bench_reindex_no_changes",
+            "params": null,
+            "param": null,
+            "extra_info": {},
+            "options": {
+                "disable_gc": false,
+                "timer": "perf_counter",
+                "min_rounds": 5,
+                "max_time": 1.0,
+                "min_time": 5e-06,
+                "warmup": false
+            },
+            "stats": {
+                "min": 0.02844649995677173,
+                "max": 0.030925000086426735,
+                "mean": 0.02978697982090976,
+                "stddev": 0.000620158745513516,
+                "rounds": 31,
+                "median": 0.029736332944594324,
+                "iqr": 0.0008033960475586355,
+                "q1": 0.029386437206994742,
+                "q3": 0.030189833254553378,
+                "iqr_outliers": 0,
+                "stddev_outliers": 10,
+                "outliers": "10;0",
+                "ld15iqr": 0.02844649995677173,
+                "hd15iqr": 0.030925000086426735,
+                "ops": 33.571715092042446,
+                "total": 0.9233963744482026,
+                "iterations": 1
+            }
+        }
+    ],
+    "datetime": "2026-05-26T13:42:26.792571+00:00",
+    "version": "5.2.3"
+}

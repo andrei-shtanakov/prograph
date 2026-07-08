@@ -1,0 +1,4 @@
+[project]
+name = "outer-python-sub-b"
+version = "0.1.0"
+dependencies = ["outer-python-sub-a"]

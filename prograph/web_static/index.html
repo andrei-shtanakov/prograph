@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>prograph</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30/dist/cytoscape.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/layout-base/layout-base.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cose-base/cose-base.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-cose-bilkent@4.1/cytoscape-cose-bilkent.js"></script>
+</head>
+<body>
+    <header id="topbar">
+        <h1>prograph</h1>
+        <div id="snapshot-info"></div>
+        <div id="diff-picker">
+            <label for="diff-since">Diff since:</label>
+            <select id="diff-since">
+                <option value="">— off —</option>
+            </select>
+        </div>
+        <div id="search-container">
+            <input id="search-box" type="text" placeholder="Search projects + contracts…">
+            <div id="search-results"></div>
+        </div>
+    </header>
+    <main>
+        <div id="graph"></div>
+        <aside id="sidepanel">
+            <p class="placeholder">Click a node or edge to see details.</p>
+        </aside>
+    </main>
+    <footer id="activity">
+        <h3>Recent activity</h3>
+        <ol id="activity-list"></ol>
+    </footer>
+    <script type="module" src="/static/app.js"></script>
+</body>
+</html>

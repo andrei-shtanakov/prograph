@@ -1,0 +1,76 @@
+"""M11: find_drifts MCP tool via stdio."""
+
+import json
+import shutil
+import sys
+from pathlib import Path
+
+import pytest
+from mcp import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
+from typer.testing import CliRunner
+
+from prograph.cli import app
+
+runner = CliRunner()
+FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "monorepo_drift"
+
+
+@pytest.fixture
+def indexed(tmp_path: Path) -> Path:
+    dst = tmp_path / "md"
+    shutil.copytree(FIXTURE, dst)
+    runner.invoke(app, ["init", "--monorepo", str(dst)])
+    runner.invoke(app, ["index", "--monorepo", str(dst)])
+    return dst
+
+
+def _server_params(monorepo: Path) -> StdioServerParameters:
+    return StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "prograph.mcp_server", str(monorepo)],
+    )
+
+
+def _text(content_list) -> str:
+    return getattr(content_list[0], "text", "")
+
+
+async def test_find_drifts_no_filter(indexed: Path):
+    async with stdio_client(_server_params(indexed)) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("find_drifts", arguments={})
+            payload = json.loads(_text(result.content))
+            assert isinstance(payload, list)
+            assert any(d["kind"] == "missing" for d in payload)
+            assert any(d["kind"] == "extra" for d in payload)
+
+
+async def test_find_drifts_by_project(indexed: Path):
+    async with stdio_client(_server_params(indexed)) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("find_drifts", arguments={"project_name": "cleaner"})
+            payload = json.loads(_text(result.content))
+            assert payload == []
+
+
+async def test_find_drifts_by_kind(indexed: Path):
+    async with stdio_client(_server_params(indexed)) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("find_drifts", arguments={"kind": "missing"})
+            payload = json.loads(_text(result.content))
+            assert all(d["kind"] == "missing" for d in payload)
+
+
+async def test_find_drifts_invalid_kind(indexed: Path):
+    """`kind` is enum-validated in inputSchema -> MCP framework rejects pre-dispatch.
+    Result is isError=True with plain-text message, NOT our JSON {"error": ...}."""
+    async with stdio_client(_server_params(indexed)) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("find_drifts", arguments={"kind": "bogus"})
+            assert result.isError is True
+            assert "bogus" in _text(result.content)

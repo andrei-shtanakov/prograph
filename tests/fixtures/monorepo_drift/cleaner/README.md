@@ -1,0 +1,5 @@
+# cleaner
+
+## Public surface
+
+- `CleanClass`

@@ -1,0 +1,33 @@
+# Rust
+/target/
+/prograph-core/target/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.uv/
+
+# Maturin build artefacts
+*.so
+*.pyd
+*.dylib
+
+# Test outputs
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Vendored Sourcetrail subdir (its own repo, ignored from our tooling)
+/Sourcetrail/
+
+# prograph runtime artefacts (when self-hosting)
+/.prograph/graph.db
+/.prograph/graph.db-wal
+/.prograph/graph.db-shm
+/.prograph/index.log
+/.prograph/index.lock
+
+# OS
+.DS_Store

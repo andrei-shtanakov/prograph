@@ -1,0 +1,4 @@
+[project]
+name = "consumer"
+version = "0.1.0"
+dependencies = ["outer-python-sub-a"]
