@@ -24,6 +24,7 @@ def _compute_parent_map(
     on `root_path`. Returns {member_slug: parent_slug}; projects without a
     parent are absent from the dict.
     """
+
     # Normalise: strip the "./" prefix the model uses.
     def norm(rp: str) -> str:
         return rp[2:] if rp.startswith("./") else rp
@@ -78,13 +79,17 @@ class ExportReport:
     wrote_index: bool
 
 
-def export_snapshot(monorepo_root: Path) -> ExportReport:
+def export_snapshot(monorepo_root: Path, export_root: Path | None = None) -> ExportReport:
     """Render MD files from the latest snapshot in `<monorepo_root>/.prograph/graph.db`
-    into `<monorepo_root>/.prograph/{projects,contracts}/*.md` + `index.md`.
+    into the export tree (`projects/`, `contracts/`, `index.md`).
+
+    The export tree lives under `export_root` when given (relative paths resolve
+    against `monorepo_root`), otherwise under `.prograph/`. The database and other
+    internal artefacts always stay under `.prograph/`.
 
     Idempotent — repeated calls produce the same bytes for the same snapshot.
     """
-    paths = PrographPaths(monorepo_root=monorepo_root)
+    paths = PrographPaths(monorepo_root=monorepo_root, export_root=export_root)
     paths.ensure_dirs()
 
     db_path = paths.db_path

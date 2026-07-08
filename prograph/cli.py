@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from prograph import __version__, _core, core_version
-from prograph.config import read_auto_export
+from prograph.config import read_auto_export, read_export_root
 from prograph.models import IndexSummary, ProjectCandidate, SnapshotInfo
 from prograph.paths import PrographPaths
 
@@ -58,6 +58,10 @@ exclude = ["target", "node_modules", "dist", "build", "__pycache__"]
 # When true, `prograph index` automatically writes MD files to .prograph/{projects,contracts}/
 # and .prograph/index.md. Same effect as passing `--export-md` to every invocation.
 auto_export = false
+# export_root: where MD export (projects/, contracts/, index.md) is written. Relative to the
+# monorepo root; the database and internal artefacts stay in .prograph/ regardless. Overridden
+# by `--out-dir`. Unset means write under .prograph/.
+# export_root = ".prograph/graph"   # staging for an external promoter
 
 # Override classification or rename projects whose directory name differs from the package name.
 # Example:
@@ -85,6 +89,18 @@ index.lock
 
 def _resolve_monorepo(monorepo: Path | None) -> Path:
     return monorepo.resolve() if monorepo is not None else Path.cwd().resolve()
+
+
+def _resolve_export_root(cli_out_dir: Path | None, config_path: Path) -> Path | None:
+    """Pick the Markdown export root: CLI `--out-dir` > config `[output] export_root` > None.
+
+    A returned value may be relative; `PrographPaths` resolves it against the
+    monorepo root. None means "default to `.prograph/`".
+    """
+    if cli_out_dir is not None:
+        return cli_out_dir
+    from_config = read_export_root(config_path)
+    return Path(from_config) if from_config is not None else None
 
 
 @app.command()
@@ -149,6 +165,14 @@ def index(
         "--export-md",
         help="Also write MD files after indexing.",
     ),
+    out_dir: Path = typer.Option(  # noqa: B008 — standard typer DSL
+        None,
+        "--out-dir",
+        help="Markdown export root (default: config [output] export_root, else .prograph/). "
+        "Relative paths resolve against the monorepo root. The database stays in .prograph/.",
+        file_okay=False,
+        dir_okay=True,
+    ),
 ) -> None:
     """Run a full index of the monorepo: discover, parse, detect edges, diff, persist."""
 
@@ -159,6 +183,9 @@ def index(
             f"[red]error:[/red] not initialized at {paths.prograph_dir}. Run `prograph init` first."
         )
         raise typer.Exit(code=1)
+
+    export_root = _resolve_export_root(out_dir, paths.config_path)
+    paths = PrographPaths(monorepo_root=root, export_root=export_root)
 
     try:
         raw = _core.index_monorepo(str(root), str(paths.db_path))
@@ -176,7 +203,7 @@ def index(
     if export_md or auto:
         from prograph.export import export_snapshot
 
-        export_snapshot(root)
+        export_snapshot(root, export_root)
 
     if json:
         sys.stdout.write(_json.dumps(summary.model_dump(mode="json"), indent=2) + "\n")
@@ -274,6 +301,14 @@ def export_md(
         file_okay=False,
         dir_okay=True,
     ),
+    out_dir: Path = typer.Option(  # noqa: B008 — standard typer DSL
+        None,
+        "--out-dir",
+        help="Markdown export root (default: config [output] export_root, else .prograph/). "
+        "Relative paths resolve against the monorepo root. The database stays in .prograph/.",
+        file_okay=False,
+        dir_okay=True,
+    ),
 ) -> None:
     """Render Markdown files from the latest snapshot — no reindex."""
     from prograph.export import export_snapshot
@@ -290,7 +325,8 @@ def export_md(
         err_console.print("[red]error:[/red] no snapshot to export. Run `prograph index` first.")
         raise typer.Exit(code=1)
 
-    report = export_snapshot(root)
+    export_root = _resolve_export_root(out_dir, paths.config_path)
+    report = export_snapshot(root, export_root)
     console.print(
         f"[green]exported[/green] {report.n_projects} projects, "
         f"{report.n_contracts} contracts, "

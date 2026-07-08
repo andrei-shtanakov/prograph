@@ -8,13 +8,27 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class PrographPaths:
-    """All filesystem paths under `<monorepo_root>/.prograph/`."""
+    """All filesystem paths under `<monorepo_root>/.prograph/`.
+
+    Internal artefacts (db, config, lock, log, mcp_patterns) always live under
+    `.prograph/`. Markdown export (`projects/`, `contracts/`, `index.md`) lives
+    under `export_root` when set, otherwise under `.prograph/`. A relative
+    `export_root` resolves against `monorepo_root`; an absolute one is used as-is.
+    """
 
     monorepo_root: Path
+    export_root: Path | None = None
 
     @property
     def prograph_dir(self) -> Path:
         return self.monorepo_root / ".prograph"
+
+    @property
+    def _export_base(self) -> Path:
+        if self.export_root is None:
+            return self.prograph_dir
+        er = self.export_root
+        return er if er.is_absolute() else (self.monorepo_root / er)
 
     @property
     def config_path(self) -> Path:
@@ -34,11 +48,11 @@ class PrographPaths:
 
     @property
     def projects_md_dir(self) -> Path:
-        return self.prograph_dir / "projects"
+        return self._export_base / "projects"
 
     @property
     def contracts_md_dir(self) -> Path:
-        return self.prograph_dir / "contracts"
+        return self._export_base / "contracts"
 
     @property
     def gitignore_path(self) -> Path:
@@ -46,7 +60,7 @@ class PrographPaths:
 
     @property
     def index_md_path(self) -> Path:
-        return self.prograph_dir / "index.md"
+        return self._export_base / "index.md"
 
     @property
     def mcp_patterns_dir(self) -> Path:
