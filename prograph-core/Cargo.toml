@@ -32,6 +32,4 @@ default = []
 extension-module = ["pyo3/extension-module"]
 
 [dev-dependencies]
-# Pinned to last 3.x release compatible with MSRV 1.75 (newer pulls rustix 1.x → needs Rust 1.77+).
-# Bump MSRV in rust-toolchain.toml to relax this.
-tempfile = "=3.15.0"
+tempfile = "3"

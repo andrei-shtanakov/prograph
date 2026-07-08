@@ -56,8 +56,8 @@ mod tests {
 
     #[test]
     fn pyerr_conversion_picks_value_error_for_config() {
-        pyo3::prepare_freethreaded_python();
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::initialize();
+        pyo3::Python::attach(|py| {
             let err: PyErr = PrographError::Config("x".into()).into();
             assert!(err.is_instance_of::<PyValueError>(py));
         });
@@ -77,8 +77,8 @@ mod tests {
 
     #[test]
     fn lock_error_maps_to_runtime_error() {
-        pyo3::prepare_freethreaded_python();
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::initialize();
+        pyo3::Python::attach(|py| {
             let err: PyErr = PrographError::Lock {
                 path: ".prograph/index.lock".into(),
             }

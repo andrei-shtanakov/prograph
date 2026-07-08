@@ -1147,7 +1147,7 @@ pub struct SnapshotWriter<'a> {
     tx: rusqlite::Transaction<'a>,
 }
 
-impl<'a> SnapshotWriter<'a> {
+impl SnapshotWriter<'_> {
     /// Insert the new snapshots row and return its id.
     pub fn insert_snapshot(
         &self,
