@@ -1,4 +1,4 @@
-# Allow building/testing against Python newer than PyO3's max supported (currently 3.13).
+# Allow building/testing against Python newer than PyO3 0.29's abi3 cap (e.g. 3.14).
 # Affects local `cargo test` runs only; maturin builds set ABI3 separately.
 [env]
 PYO3_USE_ABI3_FORWARD_COMPATIBILITY = "1"

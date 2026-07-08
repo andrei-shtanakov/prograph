@@ -34,7 +34,9 @@ struct CargoPackage {
 
 impl CargoPackage {
     fn name_str(&self) -> Option<String> {
-        self.name.as_ref().and_then(|v| v.as_str().map(String::from))
+        self.name
+            .as_ref()
+            .and_then(|v| v.as_str().map(String::from))
     }
     fn version_str(&self) -> Option<String> {
         self.version
@@ -60,9 +62,9 @@ impl CargoDep {
     fn version_req(&self) -> Option<String> {
         match self {
             CargoDep::Simple(v) => Some(v.clone()),
-            CargoDep::Detailed { version } => version
-                .as_ref()
-                .and_then(|v| v.as_str().map(String::from)),
+            CargoDep::Detailed { version } => {
+                version.as_ref().and_then(|v| v.as_str().map(String::from))
+            }
         }
     }
 }
@@ -695,7 +697,9 @@ tokio = { workspace = true, features = ["full"] }
 "#,
         );
         let out = parse(dir.path()).unwrap();
-        let manifest = out.manifest.expect("parse should succeed despite workspace inheritance");
+        let manifest = out
+            .manifest
+            .expect("parse should succeed despite workspace inheritance");
         assert_eq!(manifest.declared_name, "arb-cli");
         // version inherited → no literal available, but parse must NOT fail.
         assert_eq!(manifest.version, None);

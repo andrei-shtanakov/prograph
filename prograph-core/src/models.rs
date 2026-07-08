@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[pyclass(eq, frozen, module = "prograph._core")]
+#[pyclass(eq, frozen, module = "prograph._core", from_py_object)]
 pub enum ProjectKind {
     Python,
     Rust,
@@ -33,7 +33,7 @@ impl ProjectKind {
 
 /// A discovered project candidate (before any parsing).
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct ProjectCandidate {
     pub name: String,
     pub root_path: String, // relative to monorepo root
@@ -67,7 +67,7 @@ impl ProjectCandidate {
 /// Direction-tagged identifier of a graph endpoint (project or contract).
 /// M2 only emits 'project'; M4 will add 'contract'.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[pyclass(eq, frozen, module = "prograph._core")]
+#[pyclass(eq, frozen, module = "prograph._core", from_py_object)]
 pub enum NodeKind {
     Project,
     Contract,
@@ -89,7 +89,7 @@ impl NodeKind {
 
 /// Edge kind. M4 emits all three: PackageDep, McpCall, ContractLink.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[pyclass(eq, frozen, module = "prograph._core")]
+#[pyclass(eq, frozen, module = "prograph._core", from_py_object)]
 pub enum EdgeKind {
     PackageDep,
     McpCall,
@@ -113,7 +113,7 @@ impl EdgeKind {
 
 /// A persisted edge with full provenance.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct Edge {
     pub id: i64,
     pub kind: EdgeKind,
@@ -142,7 +142,7 @@ impl Edge {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[pyclass(eq, frozen, module = "prograph._core")]
+#[pyclass(eq, frozen, module = "prograph._core", from_py_object)]
 pub enum ChangeKind {
     Added,
     Removed,
@@ -165,7 +165,7 @@ impl ChangeKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[pyclass(eq, frozen, module = "prograph._core")]
+#[pyclass(eq, frozen, module = "prograph._core", from_py_object)]
 pub enum EntityKind {
     Project,
     Edge,
@@ -189,7 +189,7 @@ impl EntityKind {
 
 /// A row from the change_log table.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct ChangeEvent {
     pub id: i64,
     pub snapshot_id: i64,
@@ -217,7 +217,7 @@ impl ChangeEvent {
 
 /// Metadata about a single `prograph index` snapshot.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct SnapshotInfo {
     pub id: i64,
     pub ts: String,
@@ -241,7 +241,7 @@ impl SnapshotInfo {
 
 /// A persisted contract node — JSON Schema / OpenAPI / .proto file shared across projects.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct Contract {
     pub id: i64,
     /// Optional declared identifier (JSON Schema $id, OpenAPI info.title, .proto package).
@@ -268,7 +268,7 @@ impl Contract {
 
 /// The summary `prograph index` returns to the caller after running.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct IndexSummary {
     pub snapshot_id: i64,
     pub ts: String,
@@ -299,7 +299,7 @@ impl IndexSummary {
 /// A single outbound edge as seen from a source project's MD card. `target_name` is the
 /// project name for project endpoints, or the contract `declared_id` / hash prefix.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct OutboundEdge {
     pub kind: String,
     pub target_kind: String,
@@ -319,7 +319,7 @@ impl OutboundEdge {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct InboundEdge {
     pub kind: String,
     pub source_name: String,
@@ -335,7 +335,7 @@ impl InboundEdge {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct McpToolDeclRow {
     pub tool_name: String,
     pub rel_path: String,
@@ -343,7 +343,7 @@ pub struct McpToolDeclRow {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct ContractFileRow {
     pub contract_declared_id: Option<String>,
     pub contract_slug: String,
@@ -352,7 +352,7 @@ pub struct ContractFileRow {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct RecentChangeRow {
     pub snapshot_id: i64,
     pub ts: String,
@@ -362,7 +362,7 @@ pub struct RecentChangeRow {
 
 /// Bundle of everything the renderer needs for one project's MD file.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct ProjectDescription {
     pub project_id: i64,
     pub name: String,
@@ -403,7 +403,7 @@ impl ProjectDescription {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct ContractOwner {
     pub project_name: String,
     pub project_slug: String,
@@ -411,7 +411,7 @@ pub struct ContractOwner {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct ContractDescription {
     pub contract_id: i64,
     pub declared_id: Option<String>,
@@ -425,7 +425,7 @@ pub struct ContractDescription {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct ProjectSummary {
     pub name: String,
     pub slug: String,
@@ -433,7 +433,7 @@ pub struct ProjectSummary {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct ContractSummary {
     pub slug: String,
     pub declared_id: Option<String>,
@@ -442,7 +442,7 @@ pub struct ContractSummary {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct MonorepoOverview {
     pub monorepo_root: String,
     pub snapshot_id: i64,
@@ -459,7 +459,7 @@ pub struct MonorepoOverview {
 
 /// One edge row as returned by `find_edges_filtered` — denormalised with target/source names.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct EdgeRow {
     pub id: i64,
     pub kind: String,
@@ -486,7 +486,7 @@ impl EdgeRow {
 
 /// One edge_evidence row.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct EdgeEvidenceRow {
     pub edge_id: i64,
     pub project_id: i64,
@@ -498,7 +498,7 @@ pub struct EdgeEvidenceRow {
 
 /// One search FTS hit.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct SearchHit {
     pub entity_kind: String, // 'project' | 'contract'
     pub entity_id: i64,
@@ -509,7 +509,7 @@ pub struct SearchHit {
 
 /// Edge row enriched with diff status relative to a `since` snapshot.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct DiffEdgeRow {
     pub id: i64,
     pub kind: String,
@@ -538,7 +538,7 @@ impl DiffEdgeRow {
 
 /// M9: one source file (module) belonging to a project.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct ModuleRow {
     pub id: i64,
     pub rel_path: String,
@@ -547,7 +547,7 @@ pub struct ModuleRow {
 
 /// M9: one public symbol exposed by a module — denormalised with module rel_path.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct PublicSymbolRow {
     pub module_id: i64,
     pub rel_path: String,
@@ -558,7 +558,7 @@ pub struct PublicSymbolRow {
 
 /// M9: one internal import within a module — denormalised with module rel_path.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct InternalImportRow {
     pub module_id: i64,
     pub rel_path: String,
@@ -569,7 +569,7 @@ pub struct InternalImportRow {
 /// M10: one cross-project symbol reference row, joined with project names +
 /// the source module's rel_path.
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct SymbolRefRow {
     pub from_project_name: String,
     pub from_module_rel_path: String,
@@ -596,7 +596,7 @@ impl SymbolRefRow {
 
 /// M11: one drift finding row (joined with project name).
 #[derive(Debug, Clone)]
-#[pyclass(frozen, module = "prograph._core", get_all)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
 pub struct DriftFindingRow {
     pub project_name: String,
     pub kind: String,

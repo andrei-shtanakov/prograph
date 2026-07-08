@@ -25,7 +25,7 @@ This is a from-scratch design replacing the vendored archived `Sourcetrail/` sub
 
 ## Build system
 
-**Rust core** (`prograph-core/` crate) — PyO3 extension module, built into `prograph._core`. Pinned to Rust 1.75 via `rust-toolchain.toml`.
+**Rust core** (`prograph-core/` crate) — PyO3 extension module, built into `prograph._core`. Pinned to Rust 1.85 via `rust-toolchain.toml` (bumped from 1.75 for PyO3 0.29, which needs rustc ≥ 1.83).
 **Python wrapper** (`prograph/` package) — CLI (typer), pydantic mirrors of Rust dataclasses, paths helper. Uses uv for dependency management.
 
 Build via maturin (mixed layout): `uv sync` resolves Python deps AND invokes maturin to build the Rust extension. The maturin manifest path is in `pyproject.toml` under `[tool.maturin]`.
@@ -40,10 +40,10 @@ uv run maturin develop            # recompile + reinstall the extension in the v
 
 ### Tooling pins worth knowing
 
-- `tempfile = "=3.15.0"` is an exact pin in `prograph-core/Cargo.toml` because newer `tempfile` pulls `rustix 1.x` which needs Rust 1.77+.
-- `.cargo/config.toml` sets `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` so `cargo test` works against Python > 3.13 (PyO3 0.22's current cap).
+- **PyO3 is 0.29** (bumped from 0.22). The crate uses the `Bound` API throughout; `#[pyclass]` data classes that derive `Clone` carry `skip_from_py_object` (output-only) while the enum pyclasses carry `from_py_object` (e.g. `ProjectKind`, consumed by `ProjectCandidate::new`). GIL access is `Python::attach` / `Python::initialize` (0.29 renamed `with_gil` / `prepare_freethreaded_python`).
+- `.cargo/config.toml` sets `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1` so `cargo test` works against Python newer than PyO3 0.29's abi3 cap (e.g. 3.14).
 - The `extension-module` PyO3 feature is gated on a Cargo feature (`prograph-core/Cargo.toml [features]`) and enabled only via maturin — never by `cargo test` (which needs libpython linking).
-- `indexmap` is pinned to 2.7.1 in Cargo.lock (Task 2's transitive dep of `toml`) because 2.14+ requires Rust edition2024 / MSRV 1.85; bump rust-toolchain.toml to relax.
+- `tempfile` is unpinned (`"3"`) now that MSRV is 1.85; the old `=3.15.0` pin was only needed under Rust 1.75. `indexmap` remains at 2.7.1 in Cargo.lock — 1.85 now permits 2.14+ (edition2024), but it is left pinned for a minimal diff; `cargo update -p indexmap` relaxes it.
 - `tree-sitter`, `tree-sitter-python`, `tree-sitter-rust` (M4) compile C source via `cc-rs`. First build takes ~60s; subsequent builds reuse the cache.
 
 ## Common commands

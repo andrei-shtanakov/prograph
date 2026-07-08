@@ -189,8 +189,7 @@ pub fn scan_monorepo(monorepo_root: &Path) -> Result<Vec<ProjectCandidate>> {
                 path: abs_root.display().to_string(),
                 source,
             })?;
-        let mut already_added: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut already_added: std::collections::HashSet<String> = std::collections::HashSet::new();
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() {
