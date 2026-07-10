@@ -33,12 +33,17 @@ fn version() -> &'static str {
 
 /// Python entry point for `prograph index`.
 #[pyfunction]
-#[pyo3(name = "index_monorepo")]
-fn py_index_monorepo(monorepo_root: &str, db_path: &str) -> PyResult<IndexSummary> {
+#[pyo3(name = "index_monorepo", signature = (monorepo_root, db_path, tracked=None))]
+fn py_index_monorepo(
+    monorepo_root: &str,
+    db_path: &str,
+    tracked: Option<Vec<String>>,
+) -> PyResult<IndexSummary> {
     let mut store = Store::open(std::path::Path::new(db_path))?;
     Ok(indexer::index_monorepo(
         std::path::Path::new(monorepo_root),
         &mut store,
+        tracked,
     )?)
 }
 
@@ -180,6 +185,8 @@ fn py_find_drifts_filtered(db_path: &str, kind: Option<&str>) -> PyResult<Vec<Dr
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(discovery::py_scan_monorepo, m)?)?;
+    m.add_function(wrap_pyfunction!(discovery::py_tracked_closure, m)?)?;
+    m.add_function(wrap_pyfunction!(discovery::py_missing_names, m)?)?;
     m.add_function(wrap_pyfunction!(py_index_monorepo, m)?)?;
     m.add_function(wrap_pyfunction!(py_latest_snapshot_info, m)?)?;
     m.add_function(wrap_pyfunction!(py_describe_project, m)?)?;

@@ -303,6 +303,82 @@ pub fn py_scan_monorepo(monorepo_root: &str) -> PyResult<Vec<ProjectCandidate>> 
     Ok(scan_monorepo(Path::new(monorepo_root))?)
 }
 
+/// For each candidate, decide whether it is tracked under the `names` allowlist.
+///
+/// Single source of truth for "is this candidate tracked" — the indexer filters
+/// through this, and the Python-side audit calls the same function via PyO3.
+///
+/// - `names` are deduplicated; matching is exact and case-sensitive.
+/// - Tracked roots are TOP-LEVEL candidates (root_path of the form `./<dir>`,
+///   exactly one `/`) whose name is in the set. A nested workspace member whose
+///   name collides with an allowlist entry does NOT become a root.
+/// - A candidate is tracked iff its root_path equals a tracked root's path or
+///   descends from one (`starts_with(root + "/")`).
+/// - Empty `names` returns all-false. The "empty allowlist = track all" rule
+///   lives in callers, which pass `None` / skip the call entirely.
+pub fn tracked_closure(candidates: &[ProjectCandidate], names: &[String]) -> Vec<bool> {
+    let set: std::collections::HashSet<&str> = names.iter().map(String::as_str).collect();
+    let roots: Vec<&str> = candidates
+        .iter()
+        .filter(|c| is_top_level(&c.root_path) && set.contains(c.name.as_str()))
+        .map(|c| c.root_path.as_str())
+        .collect();
+    candidates
+        .iter()
+        .map(|c| {
+            roots
+                .iter()
+                .any(|r| c.root_path == *r || c.root_path.starts_with(&format!("{r}/")))
+        })
+        .collect()
+}
+
+/// Allowlist names (deduplicated, first-occurrence order) that match no
+/// top-level candidate. Used for `n_warnings` by the indexer and for the
+/// `missing` audit list on the Python side.
+pub fn missing_names(candidates: &[ProjectCandidate], names: &[String]) -> Vec<String> {
+    let top: std::collections::HashSet<&str> = candidates
+        .iter()
+        .filter(|c| is_top_level(&c.root_path))
+        .map(|c| c.name.as_str())
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    names
+        .iter()
+        .filter(|n| seen.insert(n.as_str()) && !top.contains(n.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Top-level == direct child of the monorepo root: `./<dir>` with exactly one `/`.
+fn is_top_level(root_path: &str) -> bool {
+    root_path.starts_with("./") && root_path.matches('/').count() == 1
+}
+
+/// Python entry point: per-candidate tracked flags under an allowlist.
+#[pyfunction]
+#[pyo3(name = "tracked_closure")]
+pub fn py_tracked_closure(
+    py: Python<'_>,
+    candidates: Vec<Py<ProjectCandidate>>,
+    names: Vec<String>,
+) -> PyResult<Vec<bool>> {
+    let cands: Vec<ProjectCandidate> = candidates.iter().map(|c| c.borrow(py).clone()).collect();
+    Ok(tracked_closure(&cands, &names))
+}
+
+/// Python entry point: allowlist names matching no top-level candidate.
+#[pyfunction]
+#[pyo3(name = "missing_names")]
+pub fn py_missing_names(
+    py: Python<'_>,
+    candidates: Vec<Py<ProjectCandidate>>,
+    names: Vec<String>,
+) -> PyResult<Vec<String>> {
+    let cands: Vec<ProjectCandidate> = candidates.iter().map(|c| c.borrow(py).clone()).collect();
+    Ok(missing_names(&cands, &names))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -590,5 +666,74 @@ members = ["packages/*"]
         let result = scan_monorepo(dir.path()).unwrap();
         let names: Vec<_> = result.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, vec!["real_proj"]);
+    }
+
+    fn cand(name: &str, root_path: &str) -> ProjectCandidate {
+        ProjectCandidate {
+            name: name.to_string(),
+            root_path: root_path.to_string(),
+            kind: ProjectKind::Python,
+            manifests: vec![],
+        }
+    }
+
+    #[test]
+    fn tracked_closure_selects_subset() {
+        let cands = vec![cand("a", "./a"), cand("b", "./b"), cand("c", "./c")];
+        let names = vec!["a".to_string(), "c".to_string()];
+        assert_eq!(tracked_closure(&cands, &names), vec![true, false, true]);
+    }
+
+    #[test]
+    fn tracked_closure_includes_workspace_members_of_tracked_root() {
+        let cands = vec![
+            cand("arbiter", "./arbiter"),
+            cand("arbiter-core", "./arbiter/arbiter-core"),
+            cand("other", "./other"),
+            cand("other-sub", "./other/sub"),
+        ];
+        let names = vec!["arbiter".to_string()];
+        assert_eq!(
+            tracked_closure(&cands, &names),
+            vec![true, true, false, false]
+        );
+    }
+
+    #[test]
+    fn tracked_closure_nested_name_collision_does_not_select_root() {
+        // A nested member named "wanted" must NOT become a root; only the
+        // top-level project "wanted" (absent here) could.
+        let cands = vec![cand("host", "./host"), cand("wanted", "./host/wanted")];
+        let names = vec!["wanted".to_string()];
+        assert_eq!(tracked_closure(&cands, &names), vec![false, false]);
+    }
+
+    #[test]
+    fn tracked_closure_prefix_name_is_not_a_path_prefix() {
+        // "./ab" must not be swallowed by tracked root "./a".
+        let cands = vec![cand("a", "./a"), cand("ab", "./ab")];
+        let names = vec!["a".to_string()];
+        assert_eq!(tracked_closure(&cands, &names), vec![true, false]);
+    }
+
+    #[test]
+    fn tracked_closure_empty_names_tracks_nothing() {
+        let cands = vec![cand("a", "./a")];
+        assert_eq!(tracked_closure(&cands, &[]), vec![false]);
+    }
+
+    #[test]
+    fn missing_names_reports_unknown_once_despite_duplicates() {
+        let cands = vec![cand("a", "./a"), cand("nested", "./a/nested")];
+        let names = vec![
+            "a".to_string(),
+            "ghost".to_string(),
+            "ghost".to_string(),
+            "nested".to_string(), // nested member name is NOT a top-level match
+        ];
+        assert_eq!(
+            missing_names(&cands, &names),
+            vec!["ghost".to_string(), "nested".to_string()]
+        );
     }
 }

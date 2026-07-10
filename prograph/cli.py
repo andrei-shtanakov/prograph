@@ -11,7 +11,12 @@ from rich.console import Console
 from rich.table import Table
 
 from prograph import __version__, _core, core_version
-from prograph.config import read_auto_export, read_export_root
+from prograph.config import (
+    TrackedConfigError,
+    read_auto_export,
+    read_export_root,
+    read_tracked_projects,
+)
 from prograph.models import IndexSummary, ProjectCandidate, SnapshotInfo
 from prograph.paths import PrographPaths
 
@@ -87,6 +92,19 @@ index.lock
 #   config.toml
 """
 
+DEFAULT_TRACKED_TOML = """\
+# Tracked-projects allowlist — edit by hand. Re-running `prograph init` will not
+# overwrite this file.
+#
+# Projects listed here (top-level directory names) are indexed on every
+# `prograph index`; workspace members of a tracked root are included
+# automatically. Empty list or missing file -> ALL discovered projects are
+# tracked (legacy behaviour). Malformed file -> hard error.
+#
+# `prograph index --discover` reports projects that exist but are not listed.
+projects = []
+"""
+
 
 def _resolve_monorepo(monorepo: Path | None) -> Path:
     return monorepo.resolve() if monorepo is not None else Path.cwd().resolve()
@@ -102,6 +120,53 @@ def _resolve_export_root(cli_out_dir: Path | None, config_path: Path) -> Path | 
         return cli_out_dir
     from_config = read_export_root(config_path)
     return Path(from_config) if from_config is not None else None
+
+
+def _read_tracked_or_exit(paths: PrographPaths) -> list[str] | None:
+    """Read the allowlist; malformed tracked.toml is a hard error (exit 1).
+
+    Uniform across index/status/serve — a silently-ignored broken allowlist
+    would present a wrong picture (spec 2026-07-10-prograph-tracked-projects).
+    """
+    try:
+        return read_tracked_projects(paths.prograph_dir)
+    except TrackedConfigError as exc:
+        err_console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+def _compute_audit(root: Path, tracked: list[str]) -> dict[str, object]:
+    """Full-scan audit vs the allowlist: untracked candidates + missing names.
+
+    Uses the same Rust helpers the indexer filters with — the audit cannot
+    drift from the filter.
+    """
+    raw_candidates = _core.scan_monorepo(str(root))
+    flags = _core.tracked_closure(raw_candidates, tracked)
+    mirrors = [ProjectCandidate.from_core(c) for c in raw_candidates]
+    untracked = [
+        {"name": m.name, "root_path": m.root_path, "kind": m.kind.value}
+        for m, keep in zip(mirrors, flags, strict=True)
+        if not keep
+    ]
+    missing = list(_core.missing_names(raw_candidates, tracked))
+    return {"untracked": untracked, "missing": missing}
+
+
+def _print_audit_stderr(audit: dict[str, object]) -> None:
+    untracked = audit["untracked"]
+    missing = audit["missing"]
+    assert isinstance(untracked, list) and isinstance(missing, list)  # narrow for pyrefly
+    if untracked:
+        err_console.print(f"[yellow]discover:[/yellow] {len(untracked)} untracked project(s):")
+        for entry in untracked:
+            err_console.print(f"  - {entry['name']} ({entry['root_path']}, {entry['kind']})")
+    if missing:
+        err_console.print(
+            "[yellow]discover:[/yellow] allowlisted but not found: " + ", ".join(missing)
+        )
+    if not untracked and not missing:
+        err_console.print("[green]discover:[/green] allowlist matches discovery — no drift.")
 
 
 @app.command()
@@ -130,6 +195,8 @@ def init(
         paths.config_path.write_text(DEFAULT_CONFIG_TOML)
     if not paths.gitignore_path.exists():
         paths.gitignore_path.write_text(DEFAULT_GITIGNORE)
+    if not paths.tracked_path.exists():
+        paths.tracked_path.write_text(DEFAULT_TRACKED_TOML)
 
     # M7: document the MCP-patterns override mechanism alongside the (empty) dir.
     patterns_readme = paths.mcp_patterns_dir / "README.md"
@@ -174,6 +241,12 @@ def index(
         file_okay=False,
         dir_okay=True,
     ),
+    discover: bool = typer.Option(
+        False,
+        "--discover",
+        help="After indexing, run a full scan and report untracked/missing projects "
+        "(report only — untracked projects are not indexed).",
+    ),
 ) -> None:
     """Run a full index of the monorepo: discover, parse, detect edges, diff, persist."""
 
@@ -188,8 +261,10 @@ def index(
     export_root = _resolve_export_root(out_dir, paths.config_path)
     paths = PrographPaths(monorepo_root=root, export_root=export_root)
 
+    tracked = _read_tracked_or_exit(paths)
+
     try:
-        raw = _core.index_monorepo(str(root), str(paths.db_path))
+        raw = _core.index_monorepo(str(root), str(paths.db_path), tracked)
     except Exception as exc:  # PrographError surfaces as PyRuntimeError / PyIOError / PyValueError
         message = str(exc).lower()
         if "lock" in message:
@@ -206,8 +281,20 @@ def index(
 
         export_snapshot(root, export_root)
 
+    audit: dict[str, object] | None = None
+    if discover:
+        # tracked is None -> everything is tracked; audit trivially empty.
+        audit = (
+            _compute_audit(root, tracked)
+            if tracked is not None
+            else {"untracked": [], "missing": []}
+        )
+
     if json:
-        sys.stdout.write(_json.dumps(summary.model_dump(mode="json"), indent=2) + "\n")
+        payload = summary.model_dump(mode="json")
+        if audit is not None:
+            payload["discover"] = audit
+        sys.stdout.write(_json.dumps(payload, indent=2) + "\n")
         return
 
     console.print(
@@ -220,6 +307,9 @@ def index(
         f"[cyan]{summary.n_changes}[/cyan] changes"
         + (f", [yellow]{summary.n_warnings}[/yellow] warnings" if summary.n_warnings else "")
     )
+
+    if audit is not None:
+        _print_audit_stderr(audit)
 
 
 @app.command()
@@ -248,6 +338,12 @@ def status(
     raw_candidates = _core.scan_monorepo(str(root))
     candidates = [ProjectCandidate.from_core(c) for c in raw_candidates]
 
+    tracked_list = _read_tracked_or_exit(paths)
+    if tracked_list is None:
+        tracked_flags = [True] * len(raw_candidates)
+    else:
+        tracked_flags = list(_core.tracked_closure(raw_candidates, tracked_list))
+
     # Try to read snapshot info — opens the DB read-only via the Rust helper.
     snapshot: SnapshotInfo | None = None
     if paths.db_path.exists():
@@ -258,7 +354,10 @@ def status(
         payload = {
             "monorepo_root": str(root),
             "snapshot": snapshot.model_dump(mode="json") if snapshot else None,
-            "projects": [c.model_dump(mode="json") for c in candidates],
+            "projects": [
+                {**c.model_dump(mode="json"), "tracked": flag}
+                for c, flag in zip(candidates, tracked_flags, strict=True)
+            ],
         }
         # Bypass rich wrapping/styling: write raw JSON to stdout.
         sys.stdout.write(_json.dumps(payload, indent=2) + "\n")
@@ -269,13 +368,15 @@ def status(
     table.add_column("kind", style="magenta")
     table.add_column("root", style="dim")
     table.add_column("manifests")
+    table.add_column("tracked")
 
-    for c in candidates:
+    for c, flag in zip(candidates, tracked_flags, strict=True):
         table.add_row(
             c.name,
             c.kind.value,
             c.root_path,
             ", ".join(c.manifests),
+            "[green]yes[/green]" if flag else "[yellow]no[/yellow]",
         )
 
     console.print(table)
@@ -458,6 +559,7 @@ def serve(
             f"[red]error:[/red] not initialized at {paths.prograph_dir}. Run `prograph init` first."
         )
         raise typer.Exit(code=1)
+    tracked_list = _read_tracked_or_exit(paths)
     if not paths.db_path.exists():
         err_console.print(
             f"[red]error:[/red] no snapshot at {paths.db_path}. Run `prograph index` first."
@@ -471,6 +573,9 @@ def serve(
         )
 
     console.print(f"[green]prograph serve[/green] at http://{host}:{port} (monorepo: {root})")
+
+    if tracked_list is not None:
+        _print_audit_stderr(_compute_audit(root, tracked_list))
 
     app_instance = build_app(root)
     uvicorn.run(app_instance, host=host, port=port, log_level="info")

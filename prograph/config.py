@@ -41,3 +41,34 @@ def read_export_root(config_path: Path) -> str | None:
         return None
     value = output.get("export_root")
     return value if isinstance(value, str) else None
+
+
+class TrackedConfigError(Exception):
+    """`.prograph/tracked.toml` exists but cannot be interpreted.
+
+    Deliberately a hard error (unlike `read_export_root`'s fail-open): a broken
+    allowlist silently falling back to "track everything" would reintroduce the
+    graph pollution the allowlist exists to prevent.
+    """
+
+
+def read_tracked_projects(prograph_dir: Path) -> list[str] | None:
+    """Return the tracked-projects allowlist from `.prograph/tracked.toml`.
+
+    Missing file, missing `projects` key, or an empty list -> None (track
+    everything — legacy behaviour). Malformed TOML or a non-list /
+    non-string-list `projects` -> TrackedConfigError.
+    """
+    path = prograph_dir / "tracked.toml"
+    if not path.is_file():
+        return None
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise TrackedConfigError(f"cannot parse {path}: {exc}") from exc
+    projects = data.get("projects")
+    if projects is None or projects == []:
+        return None
+    if not isinstance(projects, list) or not all(isinstance(p, str) for p in projects):
+        raise TrackedConfigError(f"{path}: `projects` must be a list of strings")
+    return projects
