@@ -394,8 +394,8 @@ class DriftFinding(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     project_name: str
-    kind: str  # "missing" | "extra" | "stale_todo"
-    entity_kind: str  # "public_symbol" | "mcp_tool" | "contract" | "todo"
+    kind: str  # "missing" | "extra" | "stale_todo" | "stale_declaration"
+    entity_kind: str  # "public_symbol" | "mcp_tool" | "contract" | "todo" | "declared_path"
     entity_name: str
     source_path: str
     source_line: int
