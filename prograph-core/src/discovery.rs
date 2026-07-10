@@ -355,6 +355,30 @@ fn is_top_level(root_path: &str) -> bool {
     root_path.starts_with("./") && root_path.matches('/').count() == 1
 }
 
+/// Python entry point: per-candidate tracked flags under an allowlist.
+#[pyfunction]
+#[pyo3(name = "tracked_closure")]
+pub fn py_tracked_closure(
+    py: Python<'_>,
+    candidates: Vec<Py<ProjectCandidate>>,
+    names: Vec<String>,
+) -> PyResult<Vec<bool>> {
+    let cands: Vec<ProjectCandidate> = candidates.iter().map(|c| c.borrow(py).clone()).collect();
+    Ok(tracked_closure(&cands, &names))
+}
+
+/// Python entry point: allowlist names matching no top-level candidate.
+#[pyfunction]
+#[pyo3(name = "missing_names")]
+pub fn py_missing_names(
+    py: Python<'_>,
+    candidates: Vec<Py<ProjectCandidate>>,
+    names: Vec<String>,
+) -> PyResult<Vec<String>> {
+    let cands: Vec<ProjectCandidate> = candidates.iter().map(|c| c.borrow(py).clone()).collect();
+    Ok(missing_names(&cands, &names))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
