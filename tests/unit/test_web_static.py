@@ -131,3 +131,16 @@ def test_app_js_linkifies_only_http_urls() -> None:
     assert "function isHttpUrl" in app_js
     assert "/^https?:\\/\\//" in app_js
     assert "noopener noreferrer" in app_js
+
+
+def test_graph_js_styles_declared_edges() -> None:
+    graph_js = (STATIC_DIR / "graph.js").read_text(encoding="utf-8")
+    assert "declared: '#8a6fc8'" in graph_js
+    assert "declared: 'dashed'" in graph_js
+    assert "line-dash-pattern" in graph_js
+
+
+def test_app_js_renders_stale_declaration_drift_group() -> None:
+    app_js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    assert "stale_declaration" in app_js
+    assert "Stale declarations" in app_js

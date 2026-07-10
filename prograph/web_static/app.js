@@ -229,7 +229,7 @@ function renderProject(p) {
     }
     if (p.drifts && p.drifts.length) {
         nodes.push(el('h3', {}, ['Drift findings']));
-        const groups = { missing: [], extra: [], stale_todo: [] };
+        const groups = { missing: [], extra: [], stale_todo: [], stale_declaration: [] };
         p.drifts.forEach((d) => {
             if (groups[d.kind]) groups[d.kind].push(d);
         });
@@ -237,8 +237,9 @@ function renderProject(p) {
             missing: 'Missing (declared but not implemented)',
             extra: 'Extra (implemented but not declared)',
             stale_todo: 'Stale TODOs',
+            stale_declaration: 'Stale declarations (declared path no longer exists)',
         };
-        ['missing', 'extra', 'stale_todo'].forEach((k) => {
+        ['missing', 'extra', 'stale_todo', 'stale_declaration'].forEach((k) => {
             if (!groups[k].length) return;
             nodes.push(el('h4', {}, [labels[k]]));
             const items = groups[k].map((d) => {

@@ -4,12 +4,14 @@ const KIND_COLORS = {
     package_dep: '#888',
     mcp_call: '#0fa3b1',
     contract_link: '#d8862c',
+    declared: '#8a6fc8',
 };
 
 const KIND_LINESTYLES = {
     package_dep: 'solid',
     mcp_call: 'solid',
     contract_link: 'dashed',
+    declared: 'dashed',
 };
 
 const PROJECT_KIND_COLORS = {
@@ -96,6 +98,8 @@ export function buildCytoscape(container) {
                         || '#888',
                     'line-style': (e) =>
                         statusLineStyle(e.data('status'), e.data('kind')),
+                    'line-dash-pattern': (e) =>
+                        (e.data('kind') === 'declared' ? [2, 4] : [6, 3]),
                     'width': (e) =>
                         e.data('status') === 'added' || e.data('status') === 'removed'
                             ? 3
