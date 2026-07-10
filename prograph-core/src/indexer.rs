@@ -21,17 +21,34 @@ fn contract_identity_key(declared_id: Option<&str>, content_hash: &str) -> Strin
 
 /// Run the full index pipeline against `monorepo_root`. Acquires `.prograph/index.lock`
 /// for the duration; fails fast if another `prograph index` is running.
-pub fn index_monorepo(monorepo_root: &Path, store: &mut Store) -> Result<IndexSummary> {
+pub fn index_monorepo(
+    monorepo_root: &Path,
+    store: &mut Store,
+    tracked: Option<Vec<String>>,
+) -> Result<IndexSummary> {
     let start = Instant::now();
     let lock_path = monorepo_root.join(".prograph").join("index.lock");
     let _lock = IndexLockGuard::acquire(&lock_path)?;
 
     // Phase 1: Discovery.
-    let candidates = scan_monorepo(monorepo_root)?;
+    let mut candidates = scan_monorepo(monorepo_root)?;
+    let mut warning_count: i64 = 0;
+
+    // Phase 1b: allowlist filter (spec 2026-07-10-prograph-tracked-projects).
+    // None -> track everything (legacy). Some(names) -> keep only the tracked
+    // closure; each deduplicated name matching no top-level candidate warns.
+    if let Some(names) = &tracked {
+        warning_count += crate::discovery::missing_names(&candidates, names).len() as i64;
+        let flags = crate::discovery::tracked_closure(&candidates, names);
+        candidates = candidates
+            .into_iter()
+            .zip(flags)
+            .filter_map(|(c, keep)| keep.then_some(c))
+            .collect();
+    }
 
     // Phase 2: Parsing (sequential in M2; rayon parallelism is a future optimization).
     let mut facts: Vec<ProjectFacts> = Vec::with_capacity(candidates.len());
-    let mut warning_count: i64 = 0;
     for cand in &candidates {
         let proj_root = monorepo_root.join(cand.root_path.trim_start_matches("./"));
         let out = parse_project(&proj_root, cand.kind)?;
@@ -700,11 +717,33 @@ dependencies = []
     }
 
     #[test]
+    fn tracked_allowlist_filters_projects_and_warns_on_unknown() {
+        let _ = crate::detectors::deps::drain_collision_warnings();
+        let dir = setup_monorepo();
+        let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
+        let summary = index_monorepo(
+            dir.path(),
+            &mut store,
+            Some(vec![
+                "sdk".to_string(),
+                "ghost".to_string(),
+                "ghost".to_string(),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(summary.n_projects, 1, "only sdk should be indexed");
+        assert_eq!(
+            summary.n_warnings, 1,
+            "one warning for 'ghost', deduplicated"
+        );
+    }
+
+    #[test]
     fn first_index_creates_snapshot_with_two_projects_and_one_edge() {
         let _ = crate::detectors::deps::drain_collision_warnings();
         let dir = setup_monorepo();
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        let summary = index_monorepo(dir.path(), &mut store).unwrap();
+        let summary = index_monorepo(dir.path(), &mut store, None).unwrap();
         assert_eq!(summary.n_projects, 2);
         assert_eq!(summary.n_edges, 1);
         assert!(
@@ -718,8 +757,8 @@ dependencies = []
         let _ = crate::detectors::deps::drain_collision_warnings();
         let dir = setup_monorepo();
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        index_monorepo(dir.path(), &mut store).unwrap();
-        let summary = index_monorepo(dir.path(), &mut store).unwrap();
+        index_monorepo(dir.path(), &mut store, None).unwrap();
+        let summary = index_monorepo(dir.path(), &mut store, None).unwrap();
         assert_eq!(summary.n_projects, 2);
         assert_eq!(summary.n_edges, 1);
         assert_eq!(summary.n_changes, 0);
@@ -730,7 +769,7 @@ dependencies = []
         let _ = crate::detectors::deps::drain_collision_warnings();
         let dir = setup_monorepo();
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        index_monorepo(dir.path(), &mut store).unwrap();
+        index_monorepo(dir.path(), &mut store, None).unwrap();
 
         fs::write(
             dir.path().join("consumer/pyproject.toml"),
@@ -742,7 +781,7 @@ dependencies = ["my-sdk>=2.0"]
         )
         .unwrap();
 
-        let summary = index_monorepo(dir.path(), &mut store).unwrap();
+        let summary = index_monorepo(dir.path(), &mut store, None).unwrap();
         assert!(
             summary.n_changes >= 2,
             "expected attrs_changed for both project and edge"
@@ -754,13 +793,13 @@ dependencies = ["my-sdk>=2.0"]
         let _ = crate::detectors::deps::drain_collision_warnings();
         let dir = setup_monorepo();
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        let first = index_monorepo(dir.path(), &mut store).unwrap();
+        let first = index_monorepo(dir.path(), &mut store, None).unwrap();
         assert_eq!(first.n_edges, 1);
 
         // Remove the SDK (publisher) entirely. Consumer's edge to it should now be removed too.
         fs::remove_dir_all(dir.path().join("sdk")).unwrap();
 
-        let summary = index_monorepo(dir.path(), &mut store).unwrap();
+        let summary = index_monorepo(dir.path(), &mut store, None).unwrap();
         assert_eq!(summary.n_projects, 1, "only consumer remains");
         assert_eq!(summary.n_edges, 0, "edge to sdk should be removed");
         // Expect ≥ 2 change_log entries: project sdk removed + edge removed.
@@ -792,7 +831,7 @@ name = "p"
         .unwrap();
 
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        let _summary = index_monorepo(dir.path(), &mut store).unwrap();
+        let _summary = index_monorepo(dir.path(), &mut store, None).unwrap();
         let info = store.latest_snapshot_info().unwrap().unwrap();
         assert!(info.git_commit.is_none());
     }
@@ -825,7 +864,7 @@ aliases = ["shared-name"]
         .unwrap();
 
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        let summary = index_monorepo(dir.path(), &mut store).unwrap();
+        let summary = index_monorepo(dir.path(), &mut store, None).unwrap();
         assert!(
             summary.n_warnings >= 1,
             "expected ≥1 warning for name collision, got {}",
@@ -874,7 +913,7 @@ name = "cli"
         .unwrap();
 
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        index_monorepo(dir.path(), &mut store).unwrap();
+        index_monorepo(dir.path(), &mut store, None).unwrap();
 
         let n_evidence: i64 = store
             .connection()
@@ -907,7 +946,7 @@ name = "maestro"
         .unwrap();
 
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        index_monorepo(dir.path(), &mut store).unwrap();
+        index_monorepo(dir.path(), &mut store, None).unwrap();
 
         let n: i64 = store
             .connection()
@@ -943,7 +982,7 @@ def hello():
         .unwrap();
 
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        index_monorepo(dir.path(), &mut store).unwrap();
+        index_monorepo(dir.path(), &mut store, None).unwrap();
 
         let alive = store.alive_mcp_tool_decls().unwrap();
         assert!(
@@ -971,7 +1010,7 @@ def hello():
         .unwrap();
 
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        index_monorepo(dir.path(), &mut store).unwrap();
+        index_monorepo(dir.path(), &mut store, None).unwrap();
 
         let n_modules: i64 = store
             .connection()
@@ -1029,7 +1068,7 @@ def hello():
         .unwrap();
 
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        index_monorepo(dir.path(), &mut store).unwrap();
+        index_monorepo(dir.path(), &mut store, None).unwrap();
 
         let n_refs: i64 = store
             .connection()
@@ -1081,10 +1120,10 @@ def hello():
         fs::write(dir.path().join("p/p/__init__.py"), "").unwrap();
 
         let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
-        let summary = index_monorepo(dir.path(), &mut store).unwrap();
+        let summary = index_monorepo(dir.path(), &mut store, None).unwrap();
         assert_eq!(summary.n_projects, 1);
 
         // Re-run to confirm intent extraction is idempotent.
-        index_monorepo(dir.path(), &mut store).unwrap();
+        index_monorepo(dir.path(), &mut store, None).unwrap();
     }
 }

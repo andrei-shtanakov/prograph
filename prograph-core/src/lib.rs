@@ -39,6 +39,7 @@ fn py_index_monorepo(monorepo_root: &str, db_path: &str) -> PyResult<IndexSummar
     Ok(indexer::index_monorepo(
         std::path::Path::new(monorepo_root),
         &mut store,
+        None,
     )?)
 }
 

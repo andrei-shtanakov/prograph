@@ -316,7 +316,6 @@ pub fn py_scan_monorepo(monorepo_root: &str) -> PyResult<Vec<ProjectCandidate>> 
 ///   descends from one (`starts_with(root + "/")`).
 /// - Empty `names` returns all-false. The "empty allowlist = track all" rule
 ///   lives in callers, which pass `None` / skip the call entirely.
-#[allow(dead_code)]
 pub fn tracked_closure(candidates: &[ProjectCandidate], names: &[String]) -> Vec<bool> {
     let set: std::collections::HashSet<&str> = names.iter().map(String::as_str).collect();
     let roots: Vec<&str> = candidates
@@ -337,7 +336,6 @@ pub fn tracked_closure(candidates: &[ProjectCandidate], names: &[String]) -> Vec
 /// Allowlist names (deduplicated, first-occurrence order) that match no
 /// top-level candidate. Used for `n_warnings` by the indexer and for the
 /// `missing` audit list on the Python side.
-#[allow(dead_code)]
 pub fn missing_names(candidates: &[ProjectCandidate], names: &[String]) -> Vec<String> {
     let top: std::collections::HashSet<&str> = candidates
         .iter()
@@ -353,7 +351,6 @@ pub fn missing_names(candidates: &[ProjectCandidate], names: &[String]) -> Vec<S
 }
 
 /// Top-level == direct child of the monorepo root: `./<dir>` with exactly one `/`.
-#[allow(dead_code)]
 fn is_top_level(root_path: &str) -> bool {
     root_path.starts_with("./") && root_path.matches('/').count() == 1
 }
