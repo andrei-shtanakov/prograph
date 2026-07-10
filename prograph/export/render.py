@@ -205,6 +205,7 @@ def render_project(
             ("Missing (declared in intent, not implemented)", "missing"),
             ("Extra (implemented, not declared in intent)", "extra"),
             ("Stale TODOs (open TODOs that look done in recent change_log)", "stale_todo"),
+            ("Stale declarations (declared path no longer exists)", "stale_declaration"),
         ]:
             entries = by_kind.get(kind_key, [])
             if not entries:
@@ -376,6 +377,11 @@ def _render_outbound(e: OutboundEdge) -> str:
         ckind = e.attrs.get("contract_kind")
         if ckind:
             suffix = f" · `{ckind}`"
+    elif e.kind == "declared":
+        mode = e.attrs.get("mode")
+        path = e.attrs.get("path")
+        if mode and path:
+            suffix = f" · {mode} `{path}`"
 
     return f"- {arrow} [[{e.target_slug}]] · `{e.kind}`{suffix}"
 
@@ -389,6 +395,11 @@ def _inbound_attr_suffix(attrs: dict[str, object], kind: str) -> str:
         tool = attrs.get("tool")
         if tool:
             return f" · tool `{tool}`"
+    elif kind == "declared":
+        mode = attrs.get("mode")
+        path = attrs.get("path")
+        if mode and path:
+            return f" · {mode} `{path}`"
     return ""
 
 

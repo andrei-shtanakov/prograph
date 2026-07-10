@@ -9,6 +9,7 @@ from prograph.models import (
     ContractDescription,
     ContractOwner,
     ContractSummary,
+    DriftFinding,
     McpToolDeclRow,
     MonorepoOverview,
     OutboundEdge,
@@ -112,6 +113,42 @@ def test_render_outbound_edge_contract_link_uses_double_arrow():
     )
     md = render_project(desc)
     assert "↔ [[obs-v1]] · `contract_link` · `json_schema`" in md
+
+
+def test_declared_edge_suffix_shows_mode_and_path():
+    desc = _empty_desc(
+        outbound=[
+            OutboundEdge(
+                kind="declared",
+                target_kind="project",
+                target_name="proctor",
+                target_slug="proctor",
+                attrs={"mode": "read", "path": "proctor/data/state.db"},
+            )
+        ]
+    )
+    md = render_project(desc)
+    assert "→ [[proctor]] · `declared` · read `proctor/data/state.db`" in md
+
+
+def test_render_project_drift_section_shows_stale_declaration_group():
+    desc = _empty_desc(
+        drifts=[
+            DriftFinding(
+                project_name="x",
+                kind="stale_declaration",
+                entity_kind="declared_edge",
+                entity_name="proctor/data/state.db",
+                source_path="proctor/AGENTS.md",
+                source_line=12,
+                confidence="high",
+                detail=None,
+            )
+        ],
+    )
+    md = render_project(desc)
+    assert "### Stale declarations (declared path no longer exists)" in md
+    assert "`proctor/data/state.db` (declared_edge)" in md
 
 
 def test_render_project_is_deterministic():
