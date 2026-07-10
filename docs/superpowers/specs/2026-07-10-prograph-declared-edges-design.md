@@ -45,19 +45,23 @@ identify the target project directory. A path may point at a file or a directory
 
 ### Path normalization and validation
 
-Order matters — reject BEFORE normalizing, so `/proctor/x` cannot slip through as a
-"normalized" relative path:
+Declarations use `/` as the path separator, on every platform. Order matters — reject
+BEFORE normalizing, so `/proctor/x` cannot slip through as a "normalized" relative path:
 
-1. **Reject with a warning (no edge):** absolute paths (leading `/` or a Windows drive),
-   paths containing `..` segments, empty strings.
+1. **Reject with a warning (no edge):** absolute paths (leading `/` or a Windows drive —
+   checked STRINGLY via `^[A-Za-z]:` since `Path::is_absolute` on Unix does not flag
+   `C:\x`), paths containing `..` segments, paths containing `\` (backslash separators
+   are not supported — on Unix `proctor\data.db` would silently become one segment),
+   empty strings.
 2. Then normalize the surviving relative path: strip leading `./`, strip a trailing `/`.
-- **Prefix matching is segment-aware:** `proctor/data/x` matches project root `proctor`,
-  but `proctor2/data/x` does NOT match `proctor` (compare whole path segments, not string
-  prefixes — same trailing-`/` guard as `tracked_closure`).
-- **Longest match wins:** `atp-platform/packages/atp-sdk/x.json` resolves to the nested
-  workspace member `atp-sdk` (root `atp-platform/packages/atp-sdk`), not to `atp-platform`.
-- Self-referencing declarations (path resolves to the declaring project) → warning, no
-  edge (a project reading its own files is not an integration).
+3. **Prefix matching is segment-aware:** `proctor/data/x` matches project root `proctor`,
+   but `proctor2/data/x` does NOT match `proctor` (compare whole path segments, not
+   string prefixes — same trailing-`/` guard as `tracked_closure`).
+4. **Longest match wins:** `atp-platform/packages/atp-sdk/x.json` resolves to the nested
+   workspace member `atp-sdk` (root `atp-platform/packages/atp-sdk`), not to
+   `atp-platform`.
+5. Self-referencing declarations (path resolves to the declaring project) → warning, no
+   edge (a project reading its own files is not an integration).
 
 ## Facts model — `DeclaredPath`
 
@@ -147,6 +151,20 @@ collision warnings — that pattern is a known wart; new code returns data. Migr
 `detect_all`, merges edges into the persist phase, stale findings into the drift persist
 phase, warnings into `n_warnings`.
 
+### Evidence lookup by FULL edge identity (required fix in the persist phase)
+
+The persist phase currently locates the `EdgeCandidate` whose evidence to store by
+`attrs_hash` alone (`indexer.rs` ~420: `.find(|c| c.attrs_hash == attrs_hash)`, with a
+comment wrongly asserting uniqueness). For declared edges this breaks visibly: two
+different projects declaring the same `mode`+`path` (e.g. two consumers both reading
+`proctor/data/state.db`) produce IDENTICAL attrs_hash, and the second edge would silently
+pick up the first edge's evidence — wrong provenance. The full identity key
+`<kind>|<from_root>|<to_endpoint>|<attrs_hash>` is already computed right there (~line
+404): the candidate lookup MUST match on the full identity (kind + from + to +
+attrs_hash), not attrs_hash alone. This fixes a latent bug for existing kinds too;
+covered by a dedicated test (two declarers, same path → each edge carries its own
+manifest evidence).
+
 ## Data model changes
 
 - `EdgeKind::Declared` (`"declared"`) — 4th enum value; PyO3 + hand-updated `_core.pyi`.
@@ -197,10 +215,13 @@ checker sees the pairs through real edges.
   REST of the manifest still parses (deps, aliases intact); Mixed project with
   declarations in BOTH manifests → union with per-entry `source_path`.
 - **Rust detector:** segment-aware prefix (`proctor` vs `proctor2`); longest-match nested
-  member; unresolved / absolute / `..` / self-reference → warning + no edge; two
-  declarations → two edges with distinct attrs_hash; evidence carries manifest line;
-  stale: existing file → no finding, deleted file → StaleDeclaration, directory target
-  with & without trailing slash → no finding.
+  member; unresolved / absolute (incl. stringly `C:\x`) / `..` / backslash /
+  self-reference → warning + no edge; two declarations → two edges with distinct
+  attrs_hash; evidence carries manifest line; stale: existing file → no finding, deleted
+  file → StaleDeclaration, directory target with & without trailing slash → no finding.
+- **Rust indexer (evidence identity):** two projects declaring the same `mode`+`path`
+  (identical attrs_hash) → each edge persists its OWN manifest evidence (full-identity
+  lookup, not attrs_hash-only).
 - **Rust migration:** v9 database with existing edges/drifts migrates to v10 losslessly;
   new kinds insertable after.
 - **Python e2e (pytest):** fixture monorepo with declared reads/writes → `declared` edge
