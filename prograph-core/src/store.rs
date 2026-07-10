@@ -16,6 +16,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (7, include_str!("migrations/v7.sql")),
     (8, include_str!("migrations/v8.sql")),
     (9, include_str!("migrations/v9.sql")),
+    (10, include_str!("migrations/v10.sql")),
 ];
 
 /// Sanitize an identifier (project name or contract declared_id) into a filesystem-safe
@@ -1610,7 +1611,7 @@ mod tests {
         let path = tmp.path().join(".prograph/graph.db");
 
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -1620,7 +1621,7 @@ mod tests {
 
         let _ = Store::open(&path).unwrap();
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -1655,7 +1656,7 @@ mod tests {
         assert!(names.contains(&"edges".to_string()));
         assert!(names.contains(&"edge_evidence".to_string()));
         assert!(names.contains(&"change_log".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -1748,7 +1749,7 @@ mod tests {
 
         // Now Store::open should apply v2 + v3.
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -1765,7 +1766,7 @@ mod tests {
             .collect();
         assert!(names.contains(&"contracts".to_string()));
         assert!(names.contains(&"contract_files".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -1906,7 +1907,7 @@ mod tests {
 
         // Open via Store — v3 migration runs.
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
 
         let edge_count: i64 = store
             .connection()
@@ -1931,7 +1932,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"mcp_tool_decls".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -2221,7 +2222,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"search_fts".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -2344,7 +2345,7 @@ mod tests {
         assert!(names.contains(&"modules".to_string()));
         assert!(names.contains(&"public_symbols".to_string()));
         assert!(names.contains(&"internal_imports".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -2360,7 +2361,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"cross_project_symbol_refs".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -2376,7 +2377,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"drift_findings".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -2401,5 +2402,199 @@ mod tests {
             rusqlite::params![pid, snap, snap],
         );
         assert!(err.is_err(), "CHECK constraint should reject 'bogus' kind");
+    }
+
+    #[test]
+    fn v10_accepts_declared_edge_and_stale_declaration_drift() {
+        // Fresh store runs the full migration chain — schema_version must be 10
+        // and the widened CHECKs must accept the new kind strings.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&tmp.path().join("g.db")).unwrap();
+        assert_eq!(store.schema_version().unwrap(), 10);
+
+        let writer = store.begin_snapshot().unwrap();
+        let snap = writer.insert_snapshot("ts", "/m", None, "0.1.0").unwrap();
+        let pid_a = writer
+            .insert_project(snap, "a", "./a", "python", "{}")
+            .unwrap();
+        let pid_b = writer
+            .insert_project(snap, "b", "./b", "python", "{}")
+            .unwrap();
+        writer
+            .insert_edge(
+                snap, "declared", "project", pid_a, "project", pid_b, "{}", "h1",
+            )
+            .expect("v10 edges CHECK must accept 'declared'");
+        writer.commit().unwrap();
+
+        store
+            .connection()
+            .execute(
+                "INSERT INTO drift_findings (project_id, kind, entity_kind, entity_name,
+                 source_path, source_line, confidence, first_seen, last_seen)
+                 VALUES (?, 'stale_declaration', 'declared_path', 'b/x.db',
+                         'pyproject.toml', 3, 'high', ?, ?)",
+                rusqlite::params![pid_a, snap, snap],
+            )
+            .expect("v10 drift_findings CHECKs must accept the new kinds");
+    }
+
+    #[test]
+    fn migration_v9_to_v10_preserves_edges_evidence_and_drift_findings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("g.db");
+
+        // Bootstrap a v9 DB by hand (run migrations v1..v9 only) and seed edges,
+        // edge_evidence, and drift_findings under the pre-v10 (narrower) CHECKs.
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(include_str!("migrations/v1.sql"))
+                .unwrap();
+            conn.execute_batch(include_str!("migrations/v2.sql"))
+                .unwrap();
+            conn.execute_batch(include_str!("migrations/v3.sql"))
+                .unwrap();
+            conn.execute_batch(include_str!("migrations/v4.sql"))
+                .unwrap();
+            conn.execute_batch(include_str!("migrations/v5.sql"))
+                .unwrap();
+            conn.execute_batch(include_str!("migrations/v6.sql"))
+                .unwrap();
+            conn.execute_batch(include_str!("migrations/v7.sql"))
+                .unwrap();
+            conn.execute_batch(include_str!("migrations/v8.sql"))
+                .unwrap();
+            conn.execute_batch(include_str!("migrations/v9.sql"))
+                .unwrap();
+
+            conn.execute(
+                "INSERT INTO snapshots (ts, monorepo_root, prograph_version) VALUES (?, ?, ?)",
+                rusqlite::params!["ts", "/m", "0.1.0"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO projects (name, root_path, kind, attrs_json, first_seen, last_seen)
+                 VALUES (?, ?, ?, ?, 1, 1)",
+                rusqlite::params!["a", "./a", "python", "{}"],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO projects (name, root_path, kind, attrs_json, first_seen, last_seen)
+                 VALUES (?, ?, ?, ?, 1, 1)",
+                rusqlite::params!["b", "./b", "python", "{}"],
+            )
+            .unwrap();
+
+            // Two edges of different kinds.
+            conn.execute(
+                "INSERT INTO edges (kind, from_kind, from_id, to_kind, to_id, attrs_json, attrs_hash, first_seen, last_seen)
+                 VALUES ('package_dep', 'project', 1, 'project', 2, '{}', 'h1', 1, 1)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO edges (kind, from_kind, from_id, to_kind, to_id, attrs_json, attrs_hash, first_seen, last_seen)
+                 VALUES ('contract_link', 'project', 1, 'contract', 999, '{}', 'h2', 1, 1)",
+                [],
+            )
+            .unwrap();
+
+            // Evidence for the package_dep edge (edge id 1).
+            conn.execute(
+                "INSERT INTO edge_evidence (edge_id, project_id, rel_path, line, snippet, first_seen, last_seen)
+                 VALUES (1, 1, 'pyproject.toml', 5, 'b = \">=1\"', 1, 1)",
+                [],
+            )
+            .unwrap();
+
+            // Two drift findings of different kinds, valid under the pre-v10 CHECKs.
+            conn.execute(
+                "INSERT INTO drift_findings (project_id, kind, entity_kind, entity_name,
+                 source_path, source_line, confidence, first_seen, last_seen)
+                 VALUES (1, 'missing', 'public_symbol', 'do_thing', 'src/lib.py', 10, 'high', 1, 1)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO drift_findings (project_id, kind, entity_kind, entity_name,
+                 source_path, source_line, confidence, first_seen, last_seen)
+                 VALUES (1, 'stale_todo', 'todo', 'fix later', 'src/lib.py', 20, 'low', 1, 1)",
+                [],
+            )
+            .unwrap();
+        }
+
+        // Open via Store — v10 migration runs (edges + drift_findings rebuilt).
+        let store = Store::open(&path).unwrap();
+        assert_eq!(store.schema_version().unwrap(), 10);
+
+        // Edge count and kinds unchanged.
+        let mut edge_kinds: Vec<String> = store
+            .connection()
+            .prepare("SELECT kind FROM edges ORDER BY id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        edge_kinds.sort();
+        assert_eq!(
+            edge_kinds,
+            vec!["contract_link".to_string(), "package_dep".to_string()],
+            "existing edges must survive v9 -> v10 migration with their kinds intact"
+        );
+
+        // edge_evidence still joins to the SAME edge id (FK intact after rename/rebuild).
+        let evidence_edge_id: i64 = store
+            .connection()
+            .query_row(
+                "SELECT edge_id FROM edge_evidence
+                 JOIN edges ON edges.id = edge_evidence.edge_id
+                 WHERE edges.kind = 'package_dep'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            evidence_edge_id, 1,
+            "edge_evidence must still reference the original package_dep edge id"
+        );
+
+        // drift_findings count and kinds unchanged.
+        let mut drift_kinds: Vec<String> = store
+            .connection()
+            .prepare("SELECT kind FROM drift_findings ORDER BY id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        drift_kinds.sort();
+        assert_eq!(
+            drift_kinds,
+            vec!["missing".to_string(), "stale_todo".to_string()],
+            "existing drift findings must survive v9 -> v10 migration with their kinds intact"
+        );
+
+        // Widened CHECKs now accept the v10-only kinds.
+        store
+            .connection()
+            .execute(
+                "INSERT INTO edges (kind, from_kind, from_id, to_kind, to_id, attrs_json, attrs_hash, first_seen, last_seen)
+                 VALUES ('declared', 'project', 1, 'project', 2, '{}', 'h3', 1, 1)",
+                [],
+            )
+            .expect("v10 edges CHECK must accept 'declared' after migrating an existing v9 db");
+        store
+            .connection()
+            .execute(
+                "INSERT INTO drift_findings (project_id, kind, entity_kind, entity_name,
+                 source_path, source_line, confidence, first_seen, last_seen)
+                 VALUES (1, 'stale_declaration', 'declared_path', 'b/x.db', 'pyproject.toml', 3, 'high', 1, 1)",
+                [],
+            )
+            .expect(
+                "v10 drift_findings CHECK must accept 'stale_declaration' after migrating an existing v9 db",
+            );
     }
 }

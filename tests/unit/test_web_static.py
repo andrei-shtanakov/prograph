@@ -104,3 +104,43 @@ def test_app_js_renders_drift_findings():
     js = (STATIC_DIR / "app.js").read_text()
     assert "Drift findings" in js
     assert "missing" in js and "extra" in js and "stale_todo" in js
+
+
+def test_contract_label_shortens_urls() -> None:
+    """Canvas labels: URL declared_ids collapse to their last path segment."""
+    from prograph.web_app import _contract_label
+
+    assert (
+        _contract_label(
+            "https://github.com/andrei-shtanakov/maestro/benchmark-contract/"
+            "report_benchmark-v1.schema.json",
+            "slug",
+        )
+        == "report_benchmark-v1.schema.json"
+    )
+    assert _contract_label("https://all_ai_orchestrators/observability-contract/v1", "s") == "v1"
+    assert _contract_label("contract-real", "s") == "contract-real"
+    assert _contract_label(None, "fallback-slug") == "fallback-slug"
+    # Trailing slashes are trimmed before taking the last segment.
+    assert _contract_label("https://x.test/", "s") == "x.test"
+
+
+def test_app_js_linkifies_only_http_urls() -> None:
+    """The panel link helper must guard href against non-http(s) schemes."""
+    app_js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    assert "function isHttpUrl" in app_js
+    assert "/^https?:\\/\\//" in app_js
+    assert "noopener noreferrer" in app_js
+
+
+def test_graph_js_styles_declared_edges() -> None:
+    graph_js = (STATIC_DIR / "graph.js").read_text(encoding="utf-8")
+    assert "declared: '#8a6fc8'" in graph_js
+    assert "declared: 'dashed'" in graph_js
+    assert "line-dash-pattern" in graph_js
+
+
+def test_app_js_renders_stale_declaration_drift_group() -> None:
+    app_js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    assert "stale_declaration" in app_js
+    assert "Stale declarations" in app_js

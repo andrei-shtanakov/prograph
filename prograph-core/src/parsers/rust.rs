@@ -121,6 +121,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
             mcp_uses: vec![],
             contracts: vec![],
             modules: vec![],
+            declared_paths: vec![],
         });
     }
 
@@ -152,6 +153,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
             mcp_uses: vec![],
             contracts: vec![],
             modules: vec![],
+            declared_paths: vec![],
         });
     }
     let package = root.package.unwrap();
@@ -169,6 +171,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
                 mcp_uses: vec![],
                 contracts: vec![],
                 modules: vec![],
+                declared_paths: vec![],
             });
         }
     };
@@ -198,6 +201,23 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
     let (mcp_decls, mcp_uses, mut all_warnings) = scan_rust_source(project_root);
     let (modules, module_warnings) = scan_rust_modules(project_root);
     all_warnings.extend(module_warnings);
+
+    // M12: `[package.metadata.prograph] reads/writes` — reuse the tolerant
+    // extraction shared with the Python parser via the untyped toml::Value path,
+    // since `CargoToml` above doesn't model `package.metadata`.
+    let raw: toml::Value =
+        toml::from_str(&contents).unwrap_or(toml::Value::Table(Default::default()));
+    let declared_table = raw
+        .get("package")
+        .and_then(|p| p.get("metadata"))
+        .and_then(|m| m.get("prograph"));
+    let declared_paths = super::python::extract_declared_from_table(
+        declared_table,
+        &contents,
+        "Cargo.toml",
+        &mut all_warnings,
+    );
+
     Ok(ParserOutput {
         manifest: Some(Manifest {
             declared_name,
@@ -210,6 +230,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
         mcp_uses,
         contracts: vec![],
         modules,
+        declared_paths,
     })
 }
 
@@ -1027,6 +1048,27 @@ use self::helper;
         assert!(!ext
             .iter()
             .any(|e| e.target_path == "crate" || e.target_path == "self"));
+    }
+
+    #[test]
+    fn extracts_declared_paths_from_cargo_metadata() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            r#"[package]
+name = "watcher"
+version = "0.1.0"
+
+[package.metadata.prograph]
+reads = ["maestro/out/plan.json"]
+"#,
+        )
+        .unwrap();
+        let out = parse(dir.path()).unwrap();
+        assert_eq!(out.declared_paths.len(), 1);
+        assert_eq!(out.declared_paths[0].path, "maestro/out/plan.json");
+        assert_eq!(out.declared_paths[0].source_path, "Cargo.toml");
+        assert_eq!(out.declared_paths[0].line, 6);
     }
 
     #[test]

@@ -103,6 +103,29 @@ window.addEventListener('prograph:deselect', () => {
 
 // Render functions return arrays of DOM nodes; setChildren swaps them into the side panel.
 
+// True only for http(s) URLs — keeps javascript:/data: out of href.
+function isHttpUrl(value) {
+    return typeof value === 'string' && /^https?:\/\//.test(value);
+}
+
+// Short human name for a contract id: URLs collapse to their last path segment.
+function contractShortName(id) {
+    if (!isHttpUrl(id)) return id;
+    const tail = id.replace(/\/+$/, '').split('/').pop();
+    return tail || id;
+}
+
+// Render a name that may be a URL (contract declared_id): short bold text
+// wrapped in a link to the full URL. Non-URLs render as plain <strong>.
+function nameOrLink(value) {
+    if (isHttpUrl(value)) {
+        return el('a', { href: value, target: '_blank', rel: 'noopener noreferrer' }, [
+            el('strong', {}, [contractShortName(value)]),
+        ]);
+    }
+    return el('strong', {}, [value]);
+}
+
 function renderProject(p) {
     const nodes = [
         el('h2', {}, [p.name]),
@@ -127,7 +150,7 @@ function renderProject(p) {
         nodes.push(el('ul', {}, p.outbound.map((e) => (
             el('li', {}, [
                 '→ ',
-                el('strong', {}, [e.target_name]),
+                nameOrLink(e.target_name),
                 ' ',
                 el('em', {}, [e.kind]),
             ])
@@ -138,7 +161,7 @@ function renderProject(p) {
         nodes.push(el('ul', {}, p.inbound.map((e) => (
             el('li', {}, [
                 '← ',
-                el('strong', {}, [e.source_name]),
+                nameOrLink(e.source_name),
                 ' ',
                 el('em', {}, [e.kind]),
             ])
@@ -206,7 +229,7 @@ function renderProject(p) {
     }
     if (p.drifts && p.drifts.length) {
         nodes.push(el('h3', {}, ['Drift findings']));
-        const groups = { missing: [], extra: [], stale_todo: [] };
+        const groups = { missing: [], extra: [], stale_todo: [], stale_declaration: [] };
         p.drifts.forEach((d) => {
             if (groups[d.kind]) groups[d.kind].push(d);
         });
@@ -214,8 +237,9 @@ function renderProject(p) {
             missing: 'Missing (declared but not implemented)',
             extra: 'Extra (implemented but not declared)',
             stale_todo: 'Stale TODOs',
+            stale_declaration: 'Stale declarations (declared path no longer exists)',
         };
-        ['missing', 'extra', 'stale_todo'].forEach((k) => {
+        ['missing', 'extra', 'stale_todo', 'stale_declaration'].forEach((k) => {
             if (!groups[k].length) return;
             nodes.push(el('h4', {}, [labels[k]]));
             const items = groups[k].map((d) => {
@@ -242,12 +266,21 @@ function renderProject(p) {
 }
 
 function renderContract(c) {
+    const displayId = c.declared_id || c.slug;
+    const dl = [
+        ['kind', c.kind],
+        ['content hash', el('code', {}, [`${c.content_hash.slice(0, 16)}…`])],
+    ];
+    if (isHttpUrl(c.declared_id)) {
+        dl.unshift(['declared id', el('a', {
+            href: c.declared_id, target: '_blank', rel: 'noopener noreferrer',
+        }, [c.declared_id])]);
+    } else if (c.declared_id) {
+        dl.unshift(['declared id', el('code', {}, [c.declared_id])]);
+    }
     const nodes = [
-        el('h2', {}, [`Contract: ${c.declared_id || c.slug}`]),
-        renderDl([
-            ['kind', c.kind],
-            ['content hash', el('code', {}, [`${c.content_hash.slice(0, 16)}…`])],
-        ]),
+        el('h2', {}, [`Contract: ${contractShortName(displayId)}`]),
+        renderDl(dl),
         el('h3', {}, ['Owners']),
     ];
     nodes.push(el('ul', {}, (c.owners || []).map((o) => (
@@ -265,11 +298,11 @@ function renderEdge(e) {
         el('h2', {}, [`Edge: ${e.kind}`]),
         renderDl([
             ['from', el('span', {}, [
-                el('strong', {}, [e.from_name]),
+                nameOrLink(e.from_name),
                 ` (${e.from_kind})`,
             ])],
             ['to', el('span', {}, [
-                el('strong', {}, [e.to_name]),
+                nameOrLink(e.to_name),
                 ` (${e.to_kind})`,
             ])],
             ['attrs', el('code', {}, [JSON.stringify(e.attrs)])],

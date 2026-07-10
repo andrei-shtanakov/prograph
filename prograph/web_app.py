@@ -18,6 +18,20 @@ from prograph.paths import PrographPaths
 _STATIC_DIR = Path(__file__).parent / "web_static"
 
 
+def _contract_label(declared_id: str | None, slug: str) -> str:
+    """Short display label for a contract node on the graph canvas.
+
+    URL declared_ids (often long GitHub links) collapse to their last path
+    segment; the full URL stays available in the side panel as a link.
+    """
+    if not declared_id:
+        return slug
+    if declared_id.startswith(("http://", "https://")):
+        tail = declared_id.rstrip("/").rsplit("/", 1)[-1]
+        return tail or declared_id
+    return declared_id
+
+
 def build_app(monorepo_root: Path) -> FastAPI:
     """Construct a FastAPI app bound to the given monorepo.
 
@@ -81,7 +95,9 @@ def build_app(monorepo_root: Path) -> FastAPI:
                     "node_kind": "contract",
                     "name": c.declared_id or c.slug,
                     "kind": c.kind,
-                    "label": c.declared_id or c.slug,
+                    # Short label on the canvas; the full declared_id (often a
+                    # long GitHub URL) lives in the side panel as a link.
+                    "label": _contract_label(c.declared_id, c.slug),
                     "n_owners": c.n_owners,
                 }
             )

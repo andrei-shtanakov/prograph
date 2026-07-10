@@ -87,13 +87,14 @@ impl NodeKind {
     }
 }
 
-/// Edge kind. M4 emits all three: PackageDep, McpCall, ContractLink.
+/// Edge kind. M4 emits all three: PackageDep, McpCall, ContractLink. M12 adds Declared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[pyclass(eq, frozen, module = "prograph._core", from_py_object)]
 pub enum EdgeKind {
     PackageDep,
     McpCall,
     ContractLink,
+    Declared,
 }
 
 #[pymethods]
@@ -107,6 +108,7 @@ impl EdgeKind {
             EdgeKind::PackageDep => "package_dep",
             EdgeKind::McpCall => "mcp_call",
             EdgeKind::ContractLink => "contract_link",
+            EdgeKind::Declared => "declared",
         }
     }
 }

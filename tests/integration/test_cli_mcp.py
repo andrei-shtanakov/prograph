@@ -100,6 +100,16 @@ async def test_mcp_find_edges_kind_filter(indexed_mcp_fixture: Path):
             assert all(e["kind"] == "mcp_call" for e in payload)
 
 
+async def test_mcp_find_edges_kind_declared_accepted(indexed_mcp_fixture: Path):
+    """Schema accepts kind="declared"; fixture has no declarations, so [] is valid."""
+    async with stdio_client(_server_params(indexed_mcp_fixture)) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("find_edges", arguments={"kind": "declared"})
+            payload = json.loads(_text(result.content))
+            assert payload == []
+
+
 async def test_mcp_edge_evidence_for_mcp_call(indexed_mcp_fixture: Path):
     async with stdio_client(_server_params(indexed_mcp_fixture)) as (read, write):
         async with ClientSession(read, write) as session:

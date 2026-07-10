@@ -19,6 +19,7 @@ pub enum DriftKind {
     Missing,
     Extra,
     StaleTodo,
+    StaleDeclaration,
 }
 
 impl DriftKind {
@@ -27,6 +28,7 @@ impl DriftKind {
             Self::Missing => "missing",
             Self::Extra => "extra",
             Self::StaleTodo => "stale_todo",
+            Self::StaleDeclaration => "stale_declaration",
         }
     }
 }
@@ -37,6 +39,7 @@ pub enum EntityKind {
     McpTool,
     Contract,
     Todo,
+    DeclaredPath,
 }
 
 impl EntityKind {
@@ -46,6 +49,7 @@ impl EntityKind {
             Self::McpTool => "mcp_tool",
             Self::Contract => "contract",
             Self::Todo => "todo",
+            Self::DeclaredPath => "declared_path",
         }
     }
 }
@@ -346,6 +350,7 @@ mod tests {
             contracts: vec![],
             modules: vec![],
             intent: IntentDoc::default(),
+            declared_paths: vec![],
         }
     }
 

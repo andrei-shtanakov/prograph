@@ -4,9 +4,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use sha2::{Digest, Sha256};
-
-use super::EdgeCandidate;
+use super::{edge_attrs_hash, EdgeCandidate};
 use crate::facts::ProjectFacts;
 use crate::models::{EdgeKind, NodeKind};
 
@@ -62,10 +60,7 @@ pub fn detect(facts: &[ProjectFacts]) -> Vec<EdgeCandidate> {
 
             // Identity hash covers ONLY identity-bearing fields per spec §5.2:
             // for package_dep, that's `dep_name` (version_req is metadata).
-            let mut hasher = Sha256::new();
-            hasher.update(b"package_dep|");
-            hasher.update(dep.name.as_bytes());
-            let attrs_hash = format!("{:x}", hasher.finalize());
+            let attrs_hash = edge_attrs_hash("package_dep", &dep.name);
 
             out.push(EdgeCandidate {
                 kind: EdgeKind::PackageDep,
@@ -145,6 +140,7 @@ mod tests {
             contracts: vec![],
             modules: vec![],
             intent: Default::default(),
+            declared_paths: vec![],
         }
     }
 
@@ -160,6 +156,7 @@ mod tests {
             contracts: vec![],
             modules: vec![],
             intent: Default::default(),
+            declared_paths: vec![],
         }
     }
 

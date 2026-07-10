@@ -26,6 +26,9 @@ prograph = "prograph.cli:app"
 # reference (its own .git, untouched by our build). Without this exclude,
 # workspace recursion picks it up as a docs project because it has README.md.
 exclude = ["Sourcetrail"]
+# `prograph export-md` / the vault-refresh workflow write rendered output
+# into the sibling prograph-vault repo's derived/ tree.
+writes = ["prograph-vault/derived/"]
 
 [dependency-groups]
 dev = [
