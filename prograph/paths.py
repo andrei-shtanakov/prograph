@@ -36,6 +36,10 @@ class PrographPaths:
         return self.prograph_dir / "config.toml"
 
     @property
+    def tracked_path(self) -> Path:
+        return self.prograph_dir / "tracked.toml"
+
+    @property
     def db_path(self) -> Path:
         return self.prograph_dir / "graph.db"
 
