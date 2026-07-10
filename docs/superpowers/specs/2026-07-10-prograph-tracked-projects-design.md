@@ -38,8 +38,13 @@ projects = [
 
 Semantics:
 
-- Missing file, empty `projects`, or malformed TOML → `None` → track everything
-  (backward compatible; all existing fixtures/tests unchanged).
+- Missing file or empty `projects` → `None` → track everything (backward compatible; all
+  existing fixtures/tests unchanged).
+- **Malformed TOML or non-list `projects` → hard error**: `prograph index` exits 1 with a
+  message on stderr. A user who created an allowlist and broke it must not silently fall
+  back to indexing everything — that reintroduces the pollution the allowlist exists to
+  prevent. (Deliberately stricter than `read_export_root`, whose fail-open only affects an
+  output path, not graph content.)
 - Names match `ProjectCandidate.name` of **top-level** candidates exactly (case-sensitive,
   as directory names are on disk).
 - A candidate is tracked iff its `root_path` equals a tracked root's path or starts with
@@ -53,6 +58,15 @@ Semantics:
 |---|---|
 | `prograph index` | Index **only** tracked roots + their workspace members. Snapshot as usual. |
 | `prograph index --discover` | Same snapshot, **plus** a full `scan_monorepo` audit printed after: `untracked` (discovered, not in allowlist) and `missing` (in allowlist, not discovered). Untracked projects are NOT indexed. With `--json`, audit is embedded in the output object under `"discover"`. |
+
+### Output discipline (audit)
+
+- `--json`: stdout carries **only** the JSON object (IndexSummary + `"discover"` key);
+  no extra text on stdout. Matches the existing CLI contract.
+- Without `--json`: the audit is printed to **stderr** (`err_console`), keeping stdout
+  reserved for the normal status lines.
+- Audit entries are structured — `{name, root_path, kind}` — both in JSON and in the
+  human-readable listing (`name` alone is ambiguous for nested workspace members).
 | `prograph status` | Full scan (unchanged), each project annotated `tracked`/`untracked`; JSON gains a boolean `tracked` per project. Read-only, no snapshot. |
 | `prograph serve` | Runs the audit once at startup, logs untracked/missing to stderr. No periodic re-run inside serve — periodic checks are external (cron/manual `index --discover`). |
 
@@ -61,26 +75,32 @@ Semantics:
 ### Python (`prograph/`)
 
 - `config.py`: `read_tracked_projects(prograph_dir: Path) -> list[str] | None` — reads
-  `tracked.toml`, tolerant of missing file / bad TOML / non-list values (returns `None`),
-  mirroring `read_export_root`'s style. Empty list → `None`.
+  `tracked.toml`. Missing file or empty list → `None`. Malformed TOML or non-list
+  `projects` → raises `TrackedConfigError` (new exception); `cli.py index` catches it,
+  prints to stderr, exits 1.
 - `cli.py`:
   - `index`: read allowlist, pass to `_core.index_monorepo`; add `--discover` flag that
     afterwards calls `_core.scan_monorepo` and prints the audit.
   - `status`: annotate rows with tracked flag.
   - `serve` (`web_app.py` startup or `cli.py serve`): one-shot audit log.
   - `init`: also create a commented `tracked.toml` template with `projects = []`.
-- Audit computation (untracked/missing set arithmetic) lives in Python — Rust knows nothing
-  about the audit.
+- Audit set arithmetic (untracked/missing) lives in Python, but the **tracked-closure
+  decision is NOT reimplemented in Python** — Python calls the same core helper Rust uses
+  (see below), so the filter and the audit cannot drift apart.
 
 ### Rust (`prograph-core/`)
 
-- `indexer::index_monorepo(monorepo_root, store, tracked: Option<Vec<String>>)` — third
-  parameter. `None` → current behaviour. `Some(names)`:
-  1. From `scan_monorepo` candidates, tracked roots = depth-1 candidates whose `name` is in
-     the set.
-  2. Keep candidates whose `root_path` is a tracked root or descends from one
+- New helper `discovery::tracked_closure(candidates: &[ProjectCandidate], names: &[String])
+  -> Vec<bool>` — the single source of truth for "is this candidate tracked":
+  1. Tracked roots = depth-1 candidates whose `name` is in the set.
+  2. A candidate is tracked iff its `root_path` is a tracked root or descends from one
      (`starts_with(root + "/")`).
-  3. Allowlist names matching nothing → one warning each (into `IndexSummary.n_warnings`).
+  Exposed via PyO3 (data-only: list of candidates + list of names → list of bools) so the
+  Python audit uses the identical logic.
+- `indexer::index_monorepo(monorepo_root, store, tracked: Option<Vec<String>>)` — third
+  parameter. `None` → current behaviour. `Some(names)` → filter candidates through
+  `tracked_closure`; allowlist names matching nothing → one warning each (into
+  `IndexSummary.n_warnings`).
 - `lib.rs` `py_index_monorepo` gains the optional list parameter (PyO3 `Option<Vec<String>>`,
   boundary stays data-only).
 - `discovery.rs` unchanged — filtering happens after scan, in the indexer.
@@ -90,17 +110,29 @@ Semantics:
 
 First `index` run with an allowlist will emit `removed` change-log entries for previously
 tracked projects that are now filtered out. That is correct and desired (the graph now
-reflects the tracked set); noted here so it isn't mistaken for a bug.
+reflects the tracked set); noted here so it isn't mistaken for a bug. **Add a line to the
+release/migration notes** — without warning it reads as a mass project deletion.
+
+### Known compromise: `--discover` rescans
+
+`index --discover` runs `scan_monorepo` a second time (inside `index_monorepo`, then again
+for the audit). If files change between the two scans the audit may differ slightly from
+the snapshot. Accepted for a local tool; the shared `tracked_closure` helper guarantees the
+*logic* is identical even when the scans are not. Revisit only if it bites in practice
+(e.g. by returning audit data from `index_monorepo` itself).
 
 ## Testing
 
-- **Rust unit (indexer):** subset tracked; workspace members of a tracked root included;
-  members of an untracked root excluded; unknown allowlist name → warning; `None` → all.
+- **Rust unit (`tracked_closure`):** subset tracked; workspace members of a tracked root
+  included; members of an untracked root excluded; name-collision between a nested member
+  and a top-level project (only depth-1 names select roots); `None`/empty → all.
+- **Rust unit (indexer):** filtering applied; unknown allowlist name → warning.
 - **Python unit (config):** missing file → None; valid list → list; empty list → None;
-  malformed TOML → None; non-list `projects` → None.
+  malformed TOML → `TrackedConfigError`; non-list `projects` → `TrackedConfigError`.
 - **Integration (pytest):** fixture monorepo + `tracked.toml` → snapshot contains only the
-  tracked closure; `index --discover` prints expected untracked/missing (text and `--json`);
-  `status` annotates correctly; no `tracked.toml` → legacy behaviour (existing tests green).
+  tracked closure; `index --discover` prints audit to stderr and clean JSON to stdout with
+  `--json`; malformed `tracked.toml` → exit 1; `status` annotates correctly; no
+  `tracked.toml` → legacy behaviour (existing tests green).
 
 ## Out of scope (YAGNI)
 
