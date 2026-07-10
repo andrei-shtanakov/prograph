@@ -33,7 +33,8 @@ def _setup(root: Path) -> None:
 
 
 def _init_with_allowlist(root: Path, toml_body: str) -> PrographPaths:
-    runner.invoke(app, ["init", "--monorepo", str(root)])
+    result = runner.invoke(app, ["init", "--monorepo", str(root)])
+    assert result.exit_code == 0, result.output
     paths = PrographPaths(monorepo_root=root)
     paths.tracked_path.write_text(toml_body)
     return paths
