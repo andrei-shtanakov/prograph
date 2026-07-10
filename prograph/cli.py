@@ -323,6 +323,12 @@ def status(
     raw_candidates = _core.scan_monorepo(str(root))
     candidates = [ProjectCandidate.from_core(c) for c in raw_candidates]
 
+    tracked_list = _read_tracked_or_exit(paths)
+    if tracked_list is None:
+        tracked_flags = [True] * len(raw_candidates)
+    else:
+        tracked_flags = list(_core.tracked_closure(raw_candidates, tracked_list))
+
     # Try to read snapshot info — opens the DB read-only via the Rust helper.
     snapshot: SnapshotInfo | None = None
     if paths.db_path.exists():
@@ -333,7 +339,10 @@ def status(
         payload = {
             "monorepo_root": str(root),
             "snapshot": snapshot.model_dump(mode="json") if snapshot else None,
-            "projects": [c.model_dump(mode="json") for c in candidates],
+            "projects": [
+                {**c.model_dump(mode="json"), "tracked": flag}
+                for c, flag in zip(candidates, tracked_flags, strict=True)
+            ],
         }
         # Bypass rich wrapping/styling: write raw JSON to stdout.
         sys.stdout.write(_json.dumps(payload, indent=2) + "\n")
@@ -344,13 +353,15 @@ def status(
     table.add_column("kind", style="magenta")
     table.add_column("root", style="dim")
     table.add_column("manifests")
+    table.add_column("tracked")
 
-    for c in candidates:
+    for c, flag in zip(candidates, tracked_flags, strict=True):
         table.add_row(
             c.name,
             c.kind.value,
             c.root_path,
             ", ".join(c.manifests),
+            "[green]yes[/green]" if flag else "[yellow]no[/yellow]",
         )
 
     console.print(table)

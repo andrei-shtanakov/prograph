@@ -89,3 +89,29 @@ def test_index_discover_text_goes_to_stderr(tmp_path: Path) -> None:
     assert "loose_proj" in result.stderr
     assert "ghost" in result.stderr
     assert "loose_proj" not in result.stdout
+
+
+def test_status_json_annotates_tracked(tmp_path: Path) -> None:
+    _setup(tmp_path)
+    _init_with_allowlist(tmp_path, 'projects = ["tracked_proj"]\n')
+    result = runner.invoke(app, ["status", "--monorepo", str(tmp_path), "--json"])
+    assert result.exit_code == 0, result.output
+    payload = _json.loads(result.stdout)
+    by_name = {p["name"]: p["tracked"] for p in payload["projects"]}
+    assert by_name["tracked_proj"] is True
+    assert by_name["loose_proj"] is False
+
+
+def test_status_without_allowlist_all_tracked(tmp_path: Path) -> None:
+    _setup(tmp_path)
+    runner.invoke(app, ["init", "--monorepo", str(tmp_path)])
+    result = runner.invoke(app, ["status", "--monorepo", str(tmp_path), "--json"])
+    payload = _json.loads(result.stdout)
+    assert all(p["tracked"] for p in payload["projects"])
+
+
+def test_status_malformed_tracked_toml_exits_1(tmp_path: Path) -> None:
+    _setup(tmp_path)
+    _init_with_allowlist(tmp_path, "projects = [broken\n")
+    result = runner.invoke(app, ["status", "--monorepo", str(tmp_path)])
+    assert result.exit_code == 1
