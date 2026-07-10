@@ -19,6 +19,8 @@ pub enum DriftKind {
     Missing,
     Extra,
     StaleTodo,
+    #[allow(dead_code)] // Constructed by the declared-path detector in a later M12 task
+    StaleDeclaration,
 }
 
 impl DriftKind {
@@ -27,6 +29,7 @@ impl DriftKind {
             Self::Missing => "missing",
             Self::Extra => "extra",
             Self::StaleTodo => "stale_todo",
+            Self::StaleDeclaration => "stale_declaration",
         }
     }
 }
@@ -37,6 +40,8 @@ pub enum EntityKind {
     McpTool,
     Contract,
     Todo,
+    #[allow(dead_code)] // Constructed by the declared-path detector in a later M12 task
+    DeclaredPath,
 }
 
 impl EntityKind {
@@ -46,6 +51,7 @@ impl EntityKind {
             Self::McpTool => "mcp_tool",
             Self::Contract => "contract",
             Self::Todo => "todo",
+            Self::DeclaredPath => "declared_path",
         }
     }
 }

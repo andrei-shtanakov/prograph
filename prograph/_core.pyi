@@ -72,6 +72,7 @@ class EdgeKind:
     PackageDep: ClassVar[EdgeKind]
     McpCall: ClassVar[EdgeKind]
     ContractLink: ClassVar[EdgeKind]
+    Declared: ClassVar[EdgeKind]
     def name(self) -> str: ...
 
 class ChangeKind:

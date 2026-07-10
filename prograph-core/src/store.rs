@@ -16,6 +16,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (7, include_str!("migrations/v7.sql")),
     (8, include_str!("migrations/v8.sql")),
     (9, include_str!("migrations/v9.sql")),
+    (10, include_str!("migrations/v10.sql")),
 ];
 
 /// Sanitize an identifier (project name or contract declared_id) into a filesystem-safe
@@ -1610,7 +1611,7 @@ mod tests {
         let path = tmp.path().join(".prograph/graph.db");
 
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -1620,7 +1621,7 @@ mod tests {
 
         let _ = Store::open(&path).unwrap();
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -1655,7 +1656,7 @@ mod tests {
         assert!(names.contains(&"edges".to_string()));
         assert!(names.contains(&"edge_evidence".to_string()));
         assert!(names.contains(&"change_log".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -1748,7 +1749,7 @@ mod tests {
 
         // Now Store::open should apply v2 + v3.
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -1765,7 +1766,7 @@ mod tests {
             .collect();
         assert!(names.contains(&"contracts".to_string()));
         assert!(names.contains(&"contract_files".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -1906,7 +1907,7 @@ mod tests {
 
         // Open via Store — v3 migration runs.
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
 
         let edge_count: i64 = store
             .connection()
@@ -1931,7 +1932,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"mcp_tool_decls".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -2221,7 +2222,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"search_fts".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -2344,7 +2345,7 @@ mod tests {
         assert!(names.contains(&"modules".to_string()));
         assert!(names.contains(&"public_symbols".to_string()));
         assert!(names.contains(&"internal_imports".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -2360,7 +2361,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"cross_project_symbol_refs".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -2376,7 +2377,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"drift_findings".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 9);
+        assert_eq!(store.schema_version().unwrap(), 10);
     }
 
     #[test]
@@ -2401,5 +2402,40 @@ mod tests {
             rusqlite::params![pid, snap, snap],
         );
         assert!(err.is_err(), "CHECK constraint should reject 'bogus' kind");
+    }
+
+    #[test]
+    fn v10_accepts_declared_edge_and_stale_declaration_drift() {
+        // Fresh store runs the full migration chain — schema_version must be 10
+        // and the widened CHECKs must accept the new kind strings.
+        let tmp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&tmp.path().join("g.db")).unwrap();
+        assert_eq!(store.schema_version().unwrap(), 10);
+
+        let writer = store.begin_snapshot().unwrap();
+        let snap = writer.insert_snapshot("ts", "/m", None, "0.1.0").unwrap();
+        let pid_a = writer
+            .insert_project(snap, "a", "./a", "python", "{}")
+            .unwrap();
+        let pid_b = writer
+            .insert_project(snap, "b", "./b", "python", "{}")
+            .unwrap();
+        writer
+            .insert_edge(
+                snap, "declared", "project", pid_a, "project", pid_b, "{}", "h1",
+            )
+            .expect("v10 edges CHECK must accept 'declared'");
+        writer.commit().unwrap();
+
+        store
+            .connection()
+            .execute(
+                "INSERT INTO drift_findings (project_id, kind, entity_kind, entity_name,
+                 source_path, source_line, confidence, first_seen, last_seen)
+                 VALUES (?, 'stale_declaration', 'declared_path', 'b/x.db',
+                         'pyproject.toml', 3, 'high', ?, ?)",
+                rusqlite::params![pid_a, snap, snap],
+            )
+            .expect("v10 drift_findings CHECKs must accept the new kinds");
     }
 }
