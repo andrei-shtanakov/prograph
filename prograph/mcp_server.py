@@ -160,7 +160,7 @@ async def _dispatch(name: str, args: dict, db_path: str) -> object:
         if kind is not None:
             if not isinstance(kind, str):
                 return {"error": "'kind' must be a string when present"}
-            if kind not in ("missing", "extra", "stale_todo"):
+            if kind not in ("missing", "extra", "stale_todo", "stale_declaration"):
                 return {"error": f"invalid kind: {kind}"}
 
         from prograph.models import DriftFinding
@@ -241,7 +241,7 @@ def _tool_definitions() -> list[Tool]:
                     },
                     "kind": {
                         "type": "string",
-                        "enum": ["package_dep", "mcp_call", "contract_link"],
+                        "enum": ["package_dep", "mcp_call", "contract_link", "declared"],
                     },
                     "since": {
                         "type": "integer",
@@ -257,7 +257,8 @@ def _tool_definitions() -> list[Tool]:
                 "Source-line locations that justify an edge. Returns evidence rows "
                 "(file:line) for all edge kinds: mcp_call (every call site), "
                 "package_dep (the consumer's manifest), contract_link (the consumer's "
-                "contract file paths)."
+                "contract file paths), declared (the declarer's manifest "
+                "[tool.prograph] entry)."
             ),
             inputSchema={
                 "type": "object",
@@ -370,8 +371,9 @@ def _tool_definitions() -> list[Tool]:
             description=(
                 "Find drift findings — discrepancies between declared intent "
                 "(README/TODO/specs) and detected reality. Filter by project_name "
-                "and/or kind ('missing' / 'extra' / 'stale_todo'). Returns "
-                "DriftFinding records with entity_name, source_path:line, confidence."
+                "and/or kind ('missing' / 'extra' / 'stale_todo' / "
+                "'stale_declaration'). Returns DriftFinding records with "
+                "entity_name, source_path:line, confidence."
             ),
             inputSchema={
                 "type": "object",
@@ -379,7 +381,7 @@ def _tool_definitions() -> list[Tool]:
                     "project_name": {"type": "string"},
                     "kind": {
                         "type": "string",
-                        "enum": ["missing", "extra", "stale_todo"],
+                        "enum": ["missing", "extra", "stale_todo", "stale_declaration"],
                     },
                 },
             },

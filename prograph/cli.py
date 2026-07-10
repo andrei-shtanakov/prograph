@@ -477,7 +477,7 @@ def drift(
     kind: str = typer.Option(
         None,
         "--kind",
-        help="Filter: missing | extra | stale_todo",
+        help="Filter: missing | extra | stale_todo | stale_declaration",
     ),
     json_out: bool = typer.Option(
         False,
@@ -517,10 +517,10 @@ def drift(
         by_kind: dict[str, list[DriftFinding]] = defaultdict(list)
         for f in by_project[project]:
             by_kind[f.kind].append(f)
-        for k in ("missing", "extra", "stale_todo"):
+        for k in ("missing", "extra", "stale_todo", "stale_declaration"):
             if not by_kind.get(k):
                 continue
-            console.print(f"  [{k}]")
+            console.print(f"  [{k}]", markup=False)
             for f in by_kind[k]:
                 conf = " (low)" if f.confidence == "low" else ""
                 console.print(

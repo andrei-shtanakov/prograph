@@ -74,3 +74,13 @@ async def test_find_drifts_invalid_kind(indexed: Path):
             result = await session.call_tool("find_drifts", arguments={"kind": "bogus"})
             assert result.isError is True
             assert "bogus" in _text(result.content)
+
+
+async def test_find_drifts_kind_stale_declaration_accepted(indexed: Path):
+    """Schema accepts kind="stale_declaration"; fixture has none, so [] is valid."""
+    async with stdio_client(_server_params(indexed)) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool("find_drifts", arguments={"kind": "stale_declaration"})
+            payload = json.loads(_text(result.content))
+            assert isinstance(payload, list)
