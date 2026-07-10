@@ -48,3 +48,19 @@ def test_init_uses_cwd_when_no_monorepo_flag(tmp_path: Path, monkeypatch):
     result = runner.invoke(app, ["init"])
     assert result.exit_code == 0
     assert (tmp_path / ".prograph" / "config.toml").is_file()
+
+
+def test_init_creates_tracked_toml_template(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["init", "--monorepo", str(tmp_path)])
+    assert result.exit_code == 0
+    tracked = tmp_path / ".prograph" / "tracked.toml"
+    assert tracked.is_file()
+    assert "projects = []" in tracked.read_text()
+
+
+def test_init_does_not_overwrite_tracked_toml(tmp_path: Path) -> None:
+    runner.invoke(app, ["init", "--monorepo", str(tmp_path)])
+    tracked = tmp_path / ".prograph" / "tracked.toml"
+    tracked.write_text('projects = ["mine"]\n')
+    runner.invoke(app, ["init", "--monorepo", str(tmp_path)])
+    assert tracked.read_text() == 'projects = ["mine"]\n'

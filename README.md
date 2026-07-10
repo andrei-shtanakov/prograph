@@ -54,6 +54,22 @@ To regenerate the test golden files after intentional output changes:
 PROGRAPH_UPDATE_GOLDEN=1 uv run pytest tests/integration/test_cli_export_md.py::test_golden_monorepo_full
 ```
 
+### Tracked projects (`.prograph/tracked.toml`)
+
+`prograph index` indexes only the projects named in `.prograph/tracked.toml`
+(top-level directory names; workspace members of a tracked root are included
+automatically). An empty list or a missing file tracks everything. A malformed
+file is a hard error for `index`, `status`, and `serve`.
+
+`prograph index --discover` additionally runs a full scan and reports
+*untracked* projects (discovered but not listed) and *missing* names (listed
+but not discovered) — report only, nothing is indexed or written.
+
+> **Migration note:** the first `index` after introducing an allowlist emits
+> `removed` change-log entries for every previously-indexed project that is no
+> longer tracked. This is expected — the graph now reflects the tracked set —
+> not a mass deletion bug.
+
 ### Detected edge kinds (M4)
 
 | Kind | Source | Identity |

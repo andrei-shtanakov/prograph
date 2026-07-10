@@ -92,6 +92,19 @@ index.lock
 #   config.toml
 """
 
+DEFAULT_TRACKED_TOML = """\
+# Tracked-projects allowlist — edit by hand. Re-running `prograph init` will not
+# overwrite this file.
+#
+# Projects listed here (top-level directory names) are indexed on every
+# `prograph index`; workspace members of a tracked root are included
+# automatically. Empty list or missing file -> ALL discovered projects are
+# tracked (legacy behaviour). Malformed file -> hard error.
+#
+# `prograph index --discover` reports projects that exist but are not listed.
+projects = []
+"""
+
 
 def _resolve_monorepo(monorepo: Path | None) -> Path:
     return monorepo.resolve() if monorepo is not None else Path.cwd().resolve()
@@ -182,6 +195,8 @@ def init(
         paths.config_path.write_text(DEFAULT_CONFIG_TOML)
     if not paths.gitignore_path.exists():
         paths.gitignore_path.write_text(DEFAULT_GITIGNORE)
+    if not paths.tracked_path.exists():
+        paths.tracked_path.write_text(DEFAULT_TRACKED_TOML)
 
     # M7: document the MCP-patterns override mechanism alongside the (empty) dir.
     patterns_readme = paths.mcp_patterns_dir / "README.md"
