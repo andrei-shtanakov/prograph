@@ -115,3 +115,28 @@ def test_status_malformed_tracked_toml_exits_1(tmp_path: Path) -> None:
     _init_with_allowlist(tmp_path, "projects = [broken\n")
     result = runner.invoke(app, ["status", "--monorepo", str(tmp_path)])
     assert result.exit_code == 1
+
+
+def test_serve_malformed_tracked_toml_exits_1(tmp_path: Path) -> None:
+    _setup(tmp_path)
+    _init_with_allowlist(tmp_path, "projects = [broken\n")
+    runner.invoke(app, ["index", "--monorepo", str(tmp_path)])  # exits 1, no db — fine
+    result = runner.invoke(app, ["serve", "--monorepo", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "tracked.toml" in (result.stdout + result.stderr)
+
+
+def test_serve_logs_audit_before_start(tmp_path: Path, monkeypatch) -> None:
+    _setup(tmp_path)
+    paths = _init_with_allowlist(tmp_path, 'projects = ["tracked_proj", "ghost"]\n')
+    result = runner.invoke(app, ["index", "--monorepo", str(tmp_path)])
+    assert result.exit_code == 0
+    assert paths.db_path.is_file()
+
+    import uvicorn
+
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: None)
+    result = runner.invoke(app, ["serve", "--monorepo", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "loose_proj" in result.stderr
+    assert "ghost" in result.stderr

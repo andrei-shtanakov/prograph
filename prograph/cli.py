@@ -544,6 +544,7 @@ def serve(
             f"[red]error:[/red] not initialized at {paths.prograph_dir}. Run `prograph init` first."
         )
         raise typer.Exit(code=1)
+    tracked_list = _read_tracked_or_exit(paths)
     if not paths.db_path.exists():
         err_console.print(
             f"[red]error:[/red] no snapshot at {paths.db_path}. Run `prograph index` first."
@@ -557,6 +558,9 @@ def serve(
         )
 
     console.print(f"[green]prograph serve[/green] at http://{host}:{port} (monorepo: {root})")
+
+    if tracked_list is not None:
+        _print_audit_stderr(_compute_audit(root, tracked_list))
 
     app_instance = build_app(root)
     uvicorn.run(app_instance, host=host, port=port, log_level="info")
