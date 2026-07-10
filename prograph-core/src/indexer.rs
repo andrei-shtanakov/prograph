@@ -19,6 +19,23 @@ fn contract_identity_key(declared_id: Option<&str>, content_hash: &str) -> Strin
     format!("{}|{}", declared_id.unwrap_or(""), content_hash)
 }
 
+/// Compute the edge-identity "to_endpoint" string for a candidate: the target
+/// project's root for project endpoints, or the contract identity key
+/// ("<declared_id>|<content_hash>") for contract endpoints. Shared by the
+/// identity-key builder and the evidence lookup so both agree on the format.
+fn candidate_to_endpoint(
+    c: &detectors::EdgeCandidate,
+    facts: &[ProjectFacts],
+    contract_candidates: &[detectors::ContractCandidate],
+) -> String {
+    if c.kind == EdgeKind::ContractLink {
+        let cc = &contract_candidates[c.to_idx];
+        contract_identity_key(cc.declared_id.as_deref(), &cc.content_hash)
+    } else {
+        facts[c.to_idx].project_root.clone()
+    }
+}
+
 /// Run the full index pipeline against `monorepo_root`. Acquires `.prograph/index.lock`
 /// for the duration; fails fast if another `prograph index` is running.
 pub fn index_monorepo(
@@ -77,7 +94,11 @@ pub fn index_monorepo(
 
     // Phase 3: Edge detection.
     let detection = detectors::detect_all(&facts);
-    let edge_candidates = detection.edges;
+    warning_count += detection.warnings.len() as i64;
+    let declared = detectors::declared::detect_declared(&facts, monorepo_root);
+    warning_count += declared.warnings.len() as i64;
+    let mut edge_candidates = detection.edges;
+    edge_candidates.extend(declared.edges);
     let contract_candidates = detection.contracts;
     let collision_warnings = detectors::deps::drain_collision_warnings();
     warning_count += collision_warnings.len() as i64;
@@ -116,12 +137,7 @@ pub fn index_monorepo(
         .iter()
         .map(|c| {
             let from_root = &facts[c.from_idx].project_root;
-            let to_endpoint = if c.kind == EdgeKind::ContractLink {
-                let cc = &contract_candidates[c.to_idx];
-                contract_identity_key(cc.declared_id.as_deref(), &cc.content_hash)
-            } else {
-                facts[c.to_idx].project_root.clone()
-            };
+            let to_endpoint = candidate_to_endpoint(c, &facts, &contract_candidates);
             let key = format!(
                 "{}|{}|{}|{}",
                 c.kind.name(),
@@ -417,10 +433,16 @@ pub fn index_monorepo(
         let is_contract_link = kind == "contract_link";
 
         // Locate the corresponding EdgeCandidate so we can persist its evidence (M7).
-        // attrs_hash already includes the edge kind via the hasher prefix, so it's unique.
+        // Match on the FULL identity — two edges may share attrs_hash (e.g. two
+        // projects declaring the same mode+path), so attrs_hash alone is ambiguous.
         let evidence = edge_candidates
             .iter()
-            .find(|c| c.attrs_hash == attrs_hash)
+            .find(|c| {
+                c.attrs_hash == attrs_hash
+                    && c.kind.name() == kind
+                    && facts[c.from_idx].project_root == from_root
+                    && candidate_to_endpoint(c, &facts, &contract_candidates) == to_endpoint
+            })
             .map(|c| c.evidence.clone())
             .unwrap_or_default();
 
@@ -593,6 +615,25 @@ pub fn index_monorepo(
                 d.detail.as_deref(),
             )?;
         }
+    }
+
+    // M12: stale declared-path findings from detect_declared, attributed to the
+    // declaring project.
+    for (from_idx, f) in &declared.stale {
+        let Some(&pid) = new_project_ids.get(&facts[*from_idx].project_root) else {
+            continue;
+        };
+        writer.insert_drift_finding(
+            snap_id,
+            pid,
+            f.kind.as_str(),
+            f.entity_kind.as_str(),
+            &f.entity_name,
+            &f.source_path,
+            f.source_line as i64,
+            f.confidence.as_str(),
+            f.detail.as_deref(),
+        )?;
     }
 
     // M7: refresh FTS index after persists are done but before commit.
@@ -1100,6 +1141,106 @@ def hello():
         assert_eq!(target_name, "atp_platform");
         assert_eq!(module_path, "sdk");
         assert_eq!(sym.as_deref(), Some("Client"));
+    }
+
+    #[test]
+    fn declared_edge_persisted_with_evidence_and_stale_drift() {
+        let _ = crate::detectors::deps::drain_collision_warnings();
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join(".prograph")).unwrap();
+        fs::create_dir_all(dir.path().join("proctor/data")).unwrap();
+        fs::write(
+            dir.path().join("proctor/pyproject.toml"),
+            "[project]\nname=\"proctor\"\nversion=\"1\"\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("proctor/data/state.db"), "x").unwrap();
+        fs::create_dir_all(dir.path().join("dispatcher")).unwrap();
+        fs::write(
+            dir.path().join("dispatcher/pyproject.toml"),
+            "[project]\nname=\"dispatcher\"\nversion=\"1\"\n[tool.prograph]\nreads=[\"proctor/data/state.db\", \"proctor/data/gone.db\"]\n",
+        )
+        .unwrap();
+        let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
+        let summary = index_monorepo(dir.path(), &mut store, None).unwrap();
+        assert_eq!(summary.n_projects, 2);
+        // one edge per declaration (both resolve to proctor):
+        let n_declared: i64 = store
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM edges WHERE kind='declared'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n_declared, 2);
+        // each declared edge carries manifest evidence:
+        let n_ev: i64 = store
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM edge_evidence WHERE edge_id IN \
+                 (SELECT id FROM edges WHERE kind='declared')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n_ev, 2);
+        // gone.db -> stale_declaration attributed to dispatcher:
+        let (kind, name): (String, String) = store
+            .connection()
+            .query_row(
+                "SELECT kind, entity_name FROM drift_findings WHERE kind='stale_declaration'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(kind, "stale_declaration");
+        assert_eq!(name, "proctor/data/gone.db");
+    }
+
+    #[test]
+    fn same_path_two_declarers_each_edge_keeps_own_evidence() {
+        // Two projects declare the SAME mode+path -> identical attrs_hash.
+        // The old attrs_hash-only lookup would give both edges the first
+        // project's evidence; full-identity lookup must keep them apart.
+        let _ = crate::detectors::deps::drain_collision_warnings();
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join(".prograph")).unwrap();
+        for (name, extra) in [("reader-a", ""), ("reader-b", ""), ("proctor", "")] {
+            fs::create_dir_all(dir.path().join(name)).unwrap();
+            let decl = if name.starts_with("reader") {
+                "[tool.prograph]\nreads=[\"proctor/state.db\"]\n"
+            } else {
+                extra
+            };
+            fs::write(
+                dir.path().join(name).join("pyproject.toml"),
+                format!("[project]\nname=\"{name}\"\nversion=\"1\"\n{decl}"),
+            )
+            .unwrap();
+        }
+        fs::write(dir.path().join("proctor/state.db"), "x").unwrap();
+        let mut store = Store::open(&dir.path().join(".prograph/graph.db")).unwrap();
+        index_monorepo(dir.path(), &mut store, None).unwrap();
+        // Each declared edge's evidence must point at ITS OWN project's manifest.
+        let rows: Vec<(i64, i64)> = store
+            .connection()
+            .prepare(
+                "SELECT e.from_id, ev.project_id FROM edges e \
+                 JOIN edge_evidence ev ON ev.edge_id = e.id WHERE e.kind='declared'",
+            )
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        for (from_id, ev_project) in rows {
+            assert_eq!(
+                from_id, ev_project,
+                "evidence must belong to the declaring project"
+            );
+        }
     }
 
     #[test]

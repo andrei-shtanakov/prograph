@@ -71,8 +71,7 @@ pub struct DetectionResult {
     pub contracts: Vec<ContractCandidate>,
     /// Human-readable warnings surfaced by detectors (e.g. rejected/unresolved
     /// declared paths). Empty from the existing deps/contracts/mcp detectors;
-    /// populated once `detect_all` wires in `declared::detect_declared` (later M12 task).
-    #[allow(dead_code)]
+    /// `declared::detect_declared` warnings are merged separately by the indexer.
     pub warnings: Vec<String>,
 }
 

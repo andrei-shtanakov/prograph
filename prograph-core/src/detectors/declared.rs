@@ -62,7 +62,6 @@ fn resolve_target(facts: &[ProjectFacts], path: &str) -> Option<usize> {
 /// Validate + resolve every declared path in `facts` into edges (to the target
 /// project), stale-declaration drift findings (target doesn't exist on disk),
 /// and warnings (path rejected or unresolvable).
-#[allow(dead_code)] // Wired into the indexer in a later M12 task
 pub fn detect_declared(facts: &[ProjectFacts], monorepo_root: &Path) -> DeclaredDetection {
     let mut det = DeclaredDetection::default();
     for (from_idx, fact) in facts.iter().enumerate() {
