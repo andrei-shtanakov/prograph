@@ -79,11 +79,55 @@ pub fn parse_project(root: &Path, kind: ProjectKind) -> Result<ParserOutput> {
 fn parse_mixed(root: &Path) -> Result<ParserOutput> {
     let py = python::parse(root)?;
     if py.manifest.is_some() {
-        return Ok(py);
+        // Canonical output stays Python, but [package.metadata.prograph] in the
+        // co-located Cargo.toml must not be silently ignored (spec: Mixed merges
+        // declared_paths from BOTH manifests).
+        let mut out = py;
+        if let Ok(rs) = rust::parse(root) {
+            out.declared_paths.extend(rs.declared_paths);
+        }
+        return Ok(out);
     }
     let rs = rust::parse(root)?;
     if rs.manifest.is_some() {
         return Ok(rs);
     }
     js::parse(root)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn mixed_project_unions_declared_paths_from_both_manifests() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("pyproject.toml"),
+            "[project]\nname = \"m\"\nversion = \"1.0\"\n[tool.prograph]\nreads = [\"a/x\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"m-core\"\nversion = \"0.1.0\"\n[package.metadata.prograph]\nreads = [\"b/y\"]\n",
+        )
+        .unwrap();
+        let out = parse_project(dir.path(), crate::models::ProjectKind::Mixed).unwrap();
+        assert_eq!(
+            out.manifest.as_ref().unwrap().declared_name,
+            "m",
+            "canonical stays Python"
+        );
+        let mut paths: Vec<(&str, &str)> = out
+            .declared_paths
+            .iter()
+            .map(|d| (d.path.as_str(), d.source_path.as_str()))
+            .collect();
+        paths.sort();
+        assert_eq!(
+            paths,
+            vec![("a/x", "pyproject.toml"), ("b/y", "Cargo.toml")]
+        );
+    }
 }
