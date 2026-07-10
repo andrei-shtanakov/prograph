@@ -45,10 +45,12 @@ identify the target project directory. A path may point at a file or a directory
 
 ### Path normalization and validation
 
-- Normalize both sides before matching: strip leading `./` and leading `/`, strip a
-  trailing `/`.
-- **Reject with a warning (no edge):** absolute paths, paths containing `..` segments,
-  empty strings.
+Order matters — reject BEFORE normalizing, so `/proctor/x` cannot slip through as a
+"normalized" relative path:
+
+1. **Reject with a warning (no edge):** absolute paths (leading `/` or a Windows drive),
+   paths containing `..` segments, empty strings.
+2. Then normalize the surviving relative path: strip leading `./`, strip a trailing `/`.
 - **Prefix matching is segment-aware:** `proctor/data/x` matches project root `proctor`,
   but `proctor2/data/x` does NOT match `proctor` (compare whole path segments, not string
   prefixes — same trailing-`/` guard as `tracked_closure`).
@@ -67,7 +69,7 @@ pub enum DeclaredMode { Read, Write }
 
 pub struct DeclaredPath {
     pub mode: DeclaredMode,
-    pub path: String,        // normalized workspace-relative path as declared
+    pub path: String,        // workspace-relative, normalized from the declared value
     pub source_path: String, // "pyproject.toml" | "Cargo.toml" (relative to project root)
     pub line: i64,           // 1-based line of the entry in the manifest
     pub snippet: Option<String>,
@@ -77,14 +79,25 @@ pub struct DeclaredPath {
 `ProjectFacts` gains `declared_paths: Vec<DeclaredPath>` (serde `#[serde(default)]`, like
 the other M4+ fact vectors). Both parsers populate it:
 
-- `parsers/python.rs` — extends the existing `[tool.prograph]` deserialization (aliases /
-  exclude already live there); line numbers found by scanning the manifest text for the
-  declared string (same technique the deps detector uses for evidence lines).
-- `parsers/rust.rs` — reads `[package.metadata.prograph]`.
+- `parsers/python.rs` — reads `[tool.prograph] reads/writes`; line numbers found by
+  scanning the manifest text for the declared string (same technique the deps detector
+  uses for evidence lines).
+- `parsers/rust.rs` — reads `[package.metadata.prograph] reads/writes`.
 
-Malformed sections (non-list `reads`, non-string items) → `ParseWarning` on the project
-(consistent with existing manifest-parse tolerance; NOT a hard error — unlike
-`tracked.toml`, a broken declaration only loses edges, it cannot pollute the graph).
+**Tolerant extraction, not typed deserialize.** The Python parser's existing typed TOML
+deserialization would fail the WHOLE manifest parse on a non-list `reads` — the opposite
+of what we want. Read the `[tool.prograph]` / `[package.metadata.prograph]` sections via
+untyped `toml::Value` navigation (or `#[serde(default)]` + a custom tolerant deserializer):
+a malformed `reads`/`writes` (non-list, non-string items) yields a `ParseWarning` on the
+project and skips only the declarations — the rest of the manifest parses normally.
+(Unlike `tracked.toml`, a broken declaration only loses edges; it cannot pollute the
+graph, so warning-not-error is right here.)
+
+**Mixed projects merge both manifests.** `parse_mixed` prefers the Python parser output
+when `pyproject.toml` exists, so `[package.metadata.prograph]` in a mixed root would be
+silently ignored. Explicit requirement: for `ProjectKind::Mixed`, `declared_paths` is the
+UNION of the Python and Rust declarations (each entry keeping its own `source_path` —
+`pyproject.toml` or `Cargo.toml`), even though the canonical manifest stays Python.
 
 ## Detector — `detectors/declared.rs`
 
@@ -157,10 +170,18 @@ phase, warnings into `n_warnings`.
   (`["package_dep", "mcp_call", "contract_link"]`, line ~244) — extend enum AND the tool
   description text. `find_drifts` kind enum likewise gains `stale_declaration` if it
   enumerates kinds.
-- **REST/UI drift panel + `prograph drift`:** flow through generically once the enum
-  exists; `--kind stale_declaration` CLI filter value added to help text.
-- **MD export:** declared edges appear in the existing Outbound/Inbound edge sections;
-  drift section renders the new kind via its generic path. Golden fixtures updated.
+- **UI drift panel is NOT generic** (`app.js` ~232-241): `groups`, `labels` and the render
+  order hardcode `missing`/`extra`/`stale_todo` — add `stale_declaration` (label "Stale
+  declarations (declared path no longer exists)") to all three places.
+- **CLI `prograph drift` is NOT generic either** (`cli.py` ~480, ~520): the `--kind` help
+  string and the `for k in ("missing", "extra", "stale_todo")` render loop both gain
+  `stale_declaration`.
+- **MD export needs an explicit suffix** (`export/render.py` `_render_outbound`, ~361):
+  the suffix builder is per-kind; without a `declared` arm the edge renders bare. Add:
+  `declared` → `· read \`proctor/data/state.db\`` / `· write \`...\`` (mode + path from
+  attrs). Same treatment in the inbound renderer if it mirrors the suffix logic.
+- **Drift section in MD** renders the new kind via its generic path. Golden fixtures
+  updated after renderer output settles.
 
 ## Rollout in the monorepo (post-release, outside this repo)
 
@@ -172,7 +193,9 @@ checker sees the pairs through real edges.
 ## Testing
 
 - **Rust parsers:** pyproject + Cargo declarations parsed into `DeclaredPath` with correct
-  line numbers; malformed sections → ParseWarning, not error.
+  line numbers; malformed `reads` (non-list / non-string items) → ParseWarning while the
+  REST of the manifest still parses (deps, aliases intact); Mixed project with
+  declarations in BOTH manifests → union with per-entry `source_path`.
 - **Rust detector:** segment-aware prefix (`proctor` vs `proctor2`); longest-match nested
   member; unresolved / absolute / `..` / self-reference → warning + no edge; two
   declarations → two edges with distinct attrs_hash; evidence carries manifest line;
@@ -183,7 +206,8 @@ checker sees the pairs through real edges.
 - **Python e2e (pytest):** fixture monorepo with declared reads/writes → `declared` edge
   in `/api/graph` with mode/path attrs; edge evidence via `edge_evidence`; deleted target
   → finding in `/api/drifts?kind=stale_declaration` and `prograph drift --kind
-  stale_declaration`; MCP `find_edges` accepts `kind="declared"`.
+  stale_declaration` (text output includes the new group); MCP `find_edges` accepts
+  `kind="declared"`; MD card shows the `· read \`path\`` suffix.
 - **Golden:** regenerate after renderer output settles.
 
 ## Out of scope (YAGNI)
