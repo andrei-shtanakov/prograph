@@ -1114,7 +1114,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: everything above.
 
-- [ ] **Step 1: Run every gate**
+- [x] **Step 1: Run every gate**
 
 ```bash
 cargo fmt --all -- --check
@@ -1127,7 +1127,7 @@ uv run pytest -v 2>&1 | tail -15
 ```
 Expected: all green. Fix anything red before proceeding.
 
-- [ ] **Step 2: Write the live allowlist (the 15 projects the user chose)**
+- [x] **Step 2: Write the live allowlist (the 15 projects the user chose)**
 
 ```bash
 cat > /Users/Andrei_Shtanakov/labs/all_ai_orchestrators/.prograph/tracked.toml <<'EOF'
@@ -1154,21 +1154,21 @@ projects = [
 EOF
 ```
 
-- [ ] **Step 3: Verify end-to-end on the real monorepo**
+- [x] **Step 3: Verify end-to-end on the real monorepo**
 
 ```bash
 uv run prograph index --monorepo /Users/Andrei_Shtanakov/labs/all_ai_orchestrators --discover --json
 ```
 Expected: `n_projects` = 15 tracked roots + their workspace members (33 with the current tree: arbiter +3, prograph +1, atp-platform +14); `"discover"` lists the untracked scratch projects (`appgraph`, `devtools`, `sdd-framework`, `spec-runner-tasks`, `spec-runner-test`, `spec-runner-test-vscode`); `missing` empty. The change log will show `removed` entries for the newly-untracked projects — expected per the migration note.
 
-- [ ] **Step 4: Verify status annotation on the real monorepo**
+- [x] **Step 4: Verify status annotation on the real monorepo**
 
 ```bash
 uv run prograph status --monorepo /Users/Andrei_Shtanakov/labs/all_ai_orchestrators 2>&1 | tail -45
 ```
 Expected: table shows `yes` for the 15 roots + members, `no` for scratch projects.
 
-- [ ] **Step 5: Final commit (docs/plan checkboxes only — the live tracked.toml lives outside this repo)**
+- [x] **Step 5: Final commit (docs/plan checkboxes only — the live tracked.toml lives outside this repo)**
 
 ```bash
 git status --short   # confirm only intended files
