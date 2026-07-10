@@ -4,9 +4,7 @@
 
 use std::collections::HashMap;
 
-use sha2::{Digest, Sha256};
-
-use super::{ContractCandidate, EdgeCandidate};
+use super::{edge_attrs_hash, ContractCandidate, EdgeCandidate};
 use crate::facts::ProjectFacts;
 use crate::models::{EdgeKind, NodeKind};
 
@@ -61,12 +59,12 @@ pub fn detect(facts: &[ProjectFacts]) -> (Vec<ContractCandidate>, Vec<EdgeCandid
                 "declared_id": c.declared_id,
             });
             let attrs_json = serde_json::to_string(&attrs).unwrap();
-            let mut hasher = Sha256::new();
-            hasher.update(b"contract_link|");
-            hasher.update(c.declared_id.as_deref().unwrap_or("").as_bytes());
-            hasher.update(b"|");
-            hasher.update(c.content_hash.as_bytes());
-            let attrs_hash = format!("{:x}", hasher.finalize());
+            let identity = format!(
+                "{}|{}",
+                c.declared_id.as_deref().unwrap_or(""),
+                c.content_hash
+            );
+            let attrs_hash = edge_attrs_hash("contract_link", &identity);
 
             let evidence: Vec<super::EvidenceLocation> = c
                 .files
@@ -99,6 +97,8 @@ pub fn detect(facts: &[ProjectFacts]) -> (Vec<ContractCandidate>, Vec<EdgeCandid
 
 #[cfg(test)]
 mod tests {
+    use sha2::{Digest, Sha256};
+
     use super::*;
     use crate::facts::{ContractFile, ContractKind, ParseStatus, ProjectFacts};
 

@@ -3,9 +3,7 @@
 
 use std::collections::HashMap;
 
-use sha2::{Digest, Sha256};
-
-use super::EdgeCandidate;
+use super::{edge_attrs_hash, EdgeCandidate};
 use crate::facts::ProjectFacts;
 use crate::models::{EdgeKind, NodeKind};
 
@@ -48,10 +46,7 @@ pub fn detect(facts: &[ProjectFacts]) -> Vec<EdgeCandidate> {
                         "tool": use_site.tool_name,
                     });
                     let attrs_json = serde_json::to_string(&attrs).unwrap();
-                    let mut hasher = Sha256::new();
-                    hasher.update(b"mcp_call|");
-                    hasher.update(use_site.tool_name.as_bytes());
-                    let attrs_hash = format!("{:x}", hasher.finalize());
+                    let attrs_hash = edge_attrs_hash("mcp_call", &use_site.tool_name);
 
                     v.insert(EdgeCandidate {
                         kind: EdgeKind::McpCall,

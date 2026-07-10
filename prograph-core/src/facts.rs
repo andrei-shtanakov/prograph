@@ -90,7 +90,6 @@ pub enum DeclaredMode {
 }
 
 impl DeclaredMode {
-    #[allow(dead_code)] // Used by detectors/store in later M12 tasks
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Read => "read",

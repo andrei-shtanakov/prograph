@@ -1,12 +1,27 @@
 //! Edge detectors — turn `ProjectFacts[]` into edge candidates.
-//! M4 ships `deps`, `contracts`, and `mcp`.
+//! M4 ships `deps`, `contracts`, and `mcp`. M12 adds `declared`.
 
 pub mod contracts;
+pub mod declared;
 pub mod deps;
 pub mod mcp;
 
+use sha2::{Digest, Sha256};
+
 use crate::facts::ProjectFacts;
 use crate::models::{EdgeKind, NodeKind};
+
+/// Shared identity-hash scheme for `EdgeCandidate.attrs_hash`: sha256 of
+/// `"{kind_prefix}|{identity}"`, where `identity` is the identity-bearing
+/// subset of attrs (per spec §5.2) — NOT the full attrs_json unless that's
+/// exactly the identity-bearing subset.
+pub(crate) fn edge_attrs_hash(kind_prefix: &str, identity: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(kind_prefix.as_bytes());
+    hasher.update(b"|");
+    hasher.update(identity.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
 
 /// A detector's pre-persistence edge proposal. The indexer assigns DB-level ids
 /// when materializing into the `edges` table.
@@ -54,6 +69,11 @@ pub struct ContractCandidate {
 pub struct DetectionResult {
     pub edges: Vec<EdgeCandidate>,
     pub contracts: Vec<ContractCandidate>,
+    /// Human-readable warnings surfaced by detectors (e.g. rejected/unresolved
+    /// declared paths). Empty from the existing deps/contracts/mcp detectors;
+    /// populated once `detect_all` wires in `declared::detect_declared` (later M12 task).
+    #[allow(dead_code)]
+    pub warnings: Vec<String>,
 }
 
 /// Run every detector against the project facts and return the aggregated result.

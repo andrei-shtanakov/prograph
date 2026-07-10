@@ -19,7 +19,6 @@ pub enum DriftKind {
     Missing,
     Extra,
     StaleTodo,
-    #[allow(dead_code)] // Constructed by the declared-path detector in a later M12 task
     StaleDeclaration,
 }
 
@@ -40,7 +39,6 @@ pub enum EntityKind {
     McpTool,
     Contract,
     Todo,
-    #[allow(dead_code)] // Constructed by the declared-path detector in a later M12 task
     DeclaredPath,
 }
 
