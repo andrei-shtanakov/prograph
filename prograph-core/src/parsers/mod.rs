@@ -42,6 +42,8 @@ pub struct ParserOutput {
     pub contracts: Vec<crate::facts::ContractFile>,
     /// M9: source files with public symbols + internal imports.
     pub modules: Vec<crate::facts::Module>,
+    /// M12: declared file-based integrations (`[tool.prograph] reads/writes`).
+    pub declared_paths: Vec<crate::facts::DeclaredPath>,
 }
 
 /// Dispatch a project to the right per-language parser. The contracts file scan
@@ -60,6 +62,7 @@ pub fn parse_project(root: &Path, kind: ProjectKind) -> Result<ParserOutput> {
             mcp_uses: vec![],
             contracts: vec![],
             modules: vec![],
+            declared_paths: vec![],
         },
     };
     if out.contracts.is_empty() {

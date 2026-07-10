@@ -346,6 +346,7 @@ mod tests {
             contracts: vec![],
             modules: vec![],
             intent: IntentDoc::default(),
+            declared_paths: vec![],
         }
     }
 

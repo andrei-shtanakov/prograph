@@ -81,6 +81,39 @@ pub struct McpToolDecl {
     pub line: u32,
 }
 
+/// M12: file-based integration declared in a manifest (`[tool.prograph] reads/writes`
+/// in pyproject.toml, `[package.metadata.prograph]` in Cargo.toml).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeclaredMode {
+    Read,
+    Write,
+}
+
+impl DeclaredMode {
+    #[allow(dead_code)] // Used by detectors/store in later M12 tasks
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Read => "read",
+            Self::Write => "write",
+        }
+    }
+}
+
+/// A single declared path with its manifest source location — captured by the
+/// parser in one pass so evidence and stale checks never re-scan the manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeclaredPath {
+    pub mode: DeclaredMode,
+    /// Workspace-relative path exactly as declared (whitespace-trimmed).
+    /// Validation/normalization happens in `detectors::declared`.
+    pub path: String,
+    /// Manifest file relative to the project root ("pyproject.toml" | "Cargo.toml").
+    pub source_path: String,
+    /// 1-based line of the entry in the manifest. Best-effort text scan.
+    pub line: u32,
+    pub snippet: Option<String>,
+}
+
 /// An MCP tool invocation by a project (client-side usage).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct McpClientUse {
@@ -180,6 +213,9 @@ pub struct ProjectFacts {
     /// M11: intent extracted from this project's markdown docs.
     #[serde(default)]
     pub intent: IntentDoc,
+    /// M12: file-based integrations declared in the manifest.
+    #[serde(default)]
+    pub declared_paths: Vec<DeclaredPath>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -295,6 +331,7 @@ mod tests {
             }],
             modules: vec![],
             intent: Default::default(),
+            declared_paths: vec![],
         };
         let json = serde_json::to_string(&f).unwrap();
         let back: ProjectFacts = serde_json::from_str(&json).unwrap();

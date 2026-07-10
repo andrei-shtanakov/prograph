@@ -71,6 +71,7 @@ pub fn index_monorepo(
             contracts: out.contracts,
             modules: out.modules,
             intent: crate::intent::extract_intent(&proj_root),
+            declared_paths: out.declared_paths,
         });
     }
 

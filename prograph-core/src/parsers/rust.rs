@@ -121,6 +121,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
             mcp_uses: vec![],
             contracts: vec![],
             modules: vec![],
+            declared_paths: vec![],
         });
     }
 
@@ -152,6 +153,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
             mcp_uses: vec![],
             contracts: vec![],
             modules: vec![],
+            declared_paths: vec![],
         });
     }
     let package = root.package.unwrap();
@@ -169,6 +171,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
                 mcp_uses: vec![],
                 contracts: vec![],
                 modules: vec![],
+                declared_paths: vec![],
             });
         }
     };
@@ -210,6 +213,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
         mcp_uses,
         contracts: vec![],
         modules,
+        declared_paths: vec![],
     })
 }
 

@@ -145,6 +145,7 @@ mod tests {
             contracts: vec![],
             modules: vec![],
             intent: Default::default(),
+            declared_paths: vec![],
         }
     }
 
@@ -160,6 +161,7 @@ mod tests {
             contracts: vec![],
             modules: vec![],
             intent: Default::default(),
+            declared_paths: vec![],
         }
     }
 

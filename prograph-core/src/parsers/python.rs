@@ -122,6 +122,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
             mcp_uses: vec![],
             contracts: vec![],
             modules: vec![],
+            declared_paths: vec![],
         });
     }
 
@@ -148,6 +149,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
                 mcp_uses: vec![],
                 contracts: vec![],
                 modules: vec![],
+                declared_paths: vec![],
             });
         }
     };
@@ -165,6 +167,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
                 mcp_uses: vec![],
                 contracts: vec![],
                 modules: vec![],
+                declared_paths: vec![],
             });
         }
     };
@@ -198,6 +201,7 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
     let (mcp_decls, mcp_uses, mut all_warnings) = scan_python_source(project_root);
     let (modules, module_warnings) = scan_python_modules(project_root, &declared_name);
     all_warnings.extend(module_warnings);
+    let declared_paths = extract_declared_paths(&contents, "pyproject.toml", &mut all_warnings);
     Ok(ParserOutput {
         manifest: Some(Manifest {
             declared_name,
@@ -210,7 +214,82 @@ pub fn parse(project_root: &Path) -> Result<ParserOutput> {
         mcp_uses,
         contracts: vec![],
         modules,
+        declared_paths,
     })
+}
+
+/// M12: extract `[tool.prograph] reads/writes` (or `[package.metadata.prograph]` —
+/// the caller picks the table) tolerantly. Malformed shapes warn and skip; they
+/// never fail the manifest parse.
+pub fn extract_declared_from_table(
+    table: Option<&toml::Value>,
+    contents: &str,
+    source_path: &str,
+    warnings: &mut Vec<ParseWarning>,
+) -> Vec<crate::facts::DeclaredPath> {
+    use crate::facts::{DeclaredMode, DeclaredPath};
+    let mut out = Vec::new();
+    let Some(table) = table else { return out };
+    for (key, mode) in [
+        ("reads", DeclaredMode::Read),
+        ("writes", DeclaredMode::Write),
+    ] {
+        let Some(value) = table.get(key) else {
+            continue;
+        };
+        let Some(items) = value.as_array() else {
+            warnings.push(ParseWarning {
+                rel_path: source_path.to_string(),
+                message: format!("`{key}` must be a list of strings"),
+            });
+            continue;
+        };
+        for item in items {
+            let Some(path) = item.as_str() else {
+                warnings.push(ParseWarning {
+                    rel_path: source_path.to_string(),
+                    message: format!("`{key}` items must be strings"),
+                });
+                continue;
+            };
+            let path = path.trim().to_string();
+            let (line, snippet) = find_manifest_line(contents, &path);
+            out.push(DeclaredPath {
+                mode,
+                path,
+                source_path: source_path.to_string(),
+                line,
+                snippet,
+            });
+        }
+    }
+    out
+}
+
+/// Best-effort 1-based line of the first manifest line containing `needle`.
+fn find_manifest_line(contents: &str, needle: &str) -> (u32, Option<String>) {
+    for (i, ln) in contents.lines().enumerate() {
+        if ln.contains(needle) {
+            return ((i + 1) as u32, Some(ln.trim().to_string()));
+        }
+    }
+    (1, None)
+}
+
+/// M12: extract `[tool.prograph] reads/writes` from a pyproject.toml's raw contents.
+/// Uses the untyped `toml::Value` path (not `PyprojectToolPrograph`) so a malformed
+/// `reads`/`writes` shape warns and is skipped instead of failing the typed parse.
+pub fn extract_declared_paths(
+    contents: &str,
+    source_path: &str,
+    warnings: &mut Vec<ParseWarning>,
+) -> Vec<crate::facts::DeclaredPath> {
+    let value: toml::Value = match toml::from_str(contents) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(), // whole-file TOML errors are reported by the main parse
+    };
+    let table = value.get("tool").and_then(|t| t.get("prograph"));
+    extract_declared_from_table(table, contents, source_path, warnings)
 }
 
 /// Walk all .py files under `project_root` and extract MCP tool decls + uses.
@@ -1207,5 +1286,66 @@ from external_lib import bar
             "relative imports must NOT appear in external_imports: {:?}",
             module.external_imports
         );
+    }
+
+    #[test]
+    fn extracts_declared_reads_and_writes_with_lines() {
+        let toml = r#"[project]
+name = "dispatcher"
+version = "1.0"
+
+[tool.prograph]
+reads = ["proctor/config/proctor.yaml", "proctor/data/state.db"]
+writes = ["prograph-vault/derived/"]
+"#;
+        let mut warnings = Vec::new();
+        let dp = extract_declared_paths(toml, "pyproject.toml", &mut warnings);
+        assert!(warnings.is_empty());
+        assert_eq!(dp.len(), 3);
+        assert_eq!(dp[0].mode, crate::facts::DeclaredMode::Read);
+        assert_eq!(dp[0].path, "proctor/config/proctor.yaml");
+        assert_eq!(dp[0].source_path, "pyproject.toml");
+        assert_eq!(dp[0].line, 6, "reads entries live on line 6");
+        assert!(dp[0].snippet.as_deref().unwrap().contains("proctor/config"));
+        assert_eq!(dp[2].mode, crate::facts::DeclaredMode::Write);
+        assert_eq!(dp[2].path, "prograph-vault/derived/");
+        assert_eq!(dp[2].line, 7);
+    }
+
+    #[test]
+    fn malformed_reads_warns_but_does_not_break_manifest_parse() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("pyproject.toml"),
+            r#"[project]
+name = "p"
+version = "1.0"
+dependencies = ["requests"]
+
+[tool.prograph]
+reads = "not-a-list"
+"#,
+        )
+        .unwrap();
+        let out = parse(dir.path()).unwrap();
+        // Manifest itself parsed fine — deps intact.
+        let m = out
+            .manifest
+            .expect("manifest must survive broken declarations");
+        assert_eq!(m.declared_name, "p");
+        assert!(!m.declared_deps.is_empty());
+        // Declarations skipped with a warning.
+        assert!(out.declared_paths.is_empty());
+        assert!(out.warnings.iter().any(|w| w.message.contains("reads")));
+    }
+
+    #[test]
+    fn non_string_items_warn_and_skip_only_those_items() {
+        let toml = "[tool.prograph]\nreads = [\"ok/path\", 42]\n";
+        let mut warnings = Vec::new();
+        let dp = extract_declared_paths(toml, "pyproject.toml", &mut warnings);
+        assert_eq!(dp.len(), 1);
+        assert_eq!(dp[0].path, "ok/path");
+        assert_eq!(warnings.len(), 1);
     }
 }

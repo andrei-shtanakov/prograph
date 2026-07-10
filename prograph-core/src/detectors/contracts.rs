@@ -114,6 +114,7 @@ mod tests {
             contracts,
             modules: vec![],
             intent: Default::default(),
+            declared_paths: vec![],
         }
     }
 
