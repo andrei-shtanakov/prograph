@@ -137,7 +137,7 @@ def test_render_project_drift_section_shows_stale_declaration_group():
             DriftFinding(
                 project_name="x",
                 kind="stale_declaration",
-                entity_kind="declared_edge",
+                entity_kind="declared_path",
                 entity_name="proctor/data/state.db",
                 source_path="proctor/AGENTS.md",
                 source_line=12,
@@ -148,7 +148,7 @@ def test_render_project_drift_section_shows_stale_declaration_group():
     )
     md = render_project(desc)
     assert "### Stale declarations (declared path no longer exists)" in md
-    assert "`proctor/data/state.db` (declared_edge)" in md
+    assert "`proctor/data/state.db` (declared_path)" in md
 
 
 def test_render_project_is_deterministic():

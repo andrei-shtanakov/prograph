@@ -81,10 +81,27 @@ fn parse_mixed(root: &Path) -> Result<ParserOutput> {
     if py.manifest.is_some() {
         // Canonical output stays Python, but [package.metadata.prograph] in the
         // co-located Cargo.toml must not be silently ignored (spec: Mixed merges
-        // declared_paths from BOTH manifests).
+        // declared_paths from BOTH manifests). Extract straight from Cargo.toml
+        // instead of running the full Rust parse: declaration warnings survive
+        // (a malformed section must not fail silently) while the secondary
+        // manifest's own parse warnings are not duplicated.
         let mut out = py;
-        if let Ok(rs) = rust::parse(root) {
-            out.declared_paths.extend(rs.declared_paths);
+        if let Ok(contents) = std::fs::read_to_string(root.join("Cargo.toml")) {
+            if let Ok(value) = toml::from_str::<toml::Value>(&contents) {
+                let table = value
+                    .get("package")
+                    .and_then(|p| p.get("metadata"))
+                    .and_then(|m| m.get("prograph"));
+                let mut warnings = Vec::new();
+                out.declared_paths
+                    .extend(python::extract_declared_from_table(
+                        table,
+                        &contents,
+                        "Cargo.toml",
+                        &mut warnings,
+                    ));
+                out.warnings.extend(warnings);
+            }
         }
         return Ok(out);
     }
@@ -99,6 +116,30 @@ fn parse_mixed(root: &Path) -> Result<ParserOutput> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn mixed_project_surfaces_malformed_cargo_declaration_warning() {
+        // Regression (PR #9 review): a malformed [package.metadata.prograph] in a
+        // Mixed root must warn, not fail silently, even though the canonical
+        // manifest is Python.
+        let dir = TempDir::new().unwrap();
+        std::fs::write(
+            dir.path().join("pyproject.toml"),
+            "[project]\nname = \"m\"\nversion = \"1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"m-core\"\nversion = \"0.1.0\"\n[package.metadata.prograph]\nreads = \"not-a-list\"\n",
+        )
+        .unwrap();
+        let out = parse_project(dir.path(), crate::models::ProjectKind::Mixed).unwrap();
+        assert!(out.declared_paths.is_empty());
+        assert!(
+            out.warnings.iter().any(|w| w.message.contains("reads")),
+            "malformed Cargo declaration must surface a warning in Mixed output"
+        );
+    }
 
     #[test]
     fn mixed_project_unions_declared_paths_from_both_manifests() {
