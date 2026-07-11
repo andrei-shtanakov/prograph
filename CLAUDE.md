@@ -155,3 +155,24 @@ Then `git diff` to review the change before committing.
 - Always run pyrefly via the CLI with explicit globs (`uv run pyrefly check 'prograph/**/*.py' ...`), never bare `pyrefly check` in project mode — project-mode excludes collide with `.gitignore`'s `*.py[cod]` line (misread as `*.py*`). See the `[tool.pyrefly]` comment in `pyproject.toml`.
 - Follow `.gitignore`'s `/.prograph/graph.db` etc. patterns so prograph self-hosting artefacts stay out of git.
 - The `Sourcetrail/` subdir is its own git repository; don't recurse into it from our toolchain. It is also listed in `pyproject.toml [tool.prograph] exclude` so workspace recursion skips it.
+
+## Repo scope & boundaries
+
+- **Этот репо:** `prograph` — git-корень `all_ai_orchestrators/prograph/`, remote `git@github.com:andrei-shtanakov/prograph.git`.
+- **Соседи (READ-ONLY reference):** `../arbiter/`, `../atp-platform/`, `../deployer/`, `../dispatcher/`, `../Maestro/`, `../open-prose/`, `../proctor/`, `../prograph-vault/`, `../robin-runtime/`, `../robin-toolkit/`, `../spec-runner/`, `../spec-runner-vscode/`, `../steward/` — их код не редактировать.
+- Нужна правка у соседа → **стоп**: запиши handoff в `../prograph-vault/authored/notes/`
+  (кросс-проектное) или `../_cowork_output/` (черновик), не трогай его файлы.
+- Кросс-репные контракты — **вендорить пиненой копией внутрь**, не ссылаться наружу.
+- Полное правило (SSOT): `../prograph-vault/authored/rules/repo-boundaries.md`.
+
+## Git workflow (у репо есть remote)
+
+- Ветка `<type>/<slug>` → push → `gh pr create`. **Прямые коммиты в `master` запрещены.**
+- После открытия PR — прочитать ревью **GitHub Copilot**: валидные замечания исправлять
+  новыми коммитами в ту же ветку; невалидные — ответить с обоснованием, **не применять
+  вслепую**; итерировать, пока не останется открытых замечаний.
+- **Не мержить.** Мерж делает пользователь.
+- После мержа пользователем: `git switch master && git pull --ff-only`, затем удалить
+  влитую ветку (`git branch -d <branch>`) и `git fetch --prune`; убрать прочие влитые ветки.
+- Никогда не делать force-push в общие ветки; не трогать другие репо (см. scope выше).
+- Полное правило (SSOT): `../prograph-vault/authored/rules/git-workflow.md`.
