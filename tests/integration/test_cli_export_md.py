@@ -47,6 +47,33 @@ def test_export_md_standalone(tmp_path: Path):
     assert (paths.projects_md_dir / "alpha.md").is_file()
 
 
+def test_export_md_leaves_journal_untouched(tmp_path: Path):
+    """kb-save journals live under `derived/journal/` (a sibling of `projects/`)
+    and are append-only, not regenerable. The stale-MD cleanup is scoped to
+    `projects/`, so a journal file — even one carrying the generated marker —
+    must survive an export refresh."""
+    _setup(tmp_path)
+    runner.invoke(app, ["init", "--monorepo", str(tmp_path)])
+    runner.invoke(app, ["index", "--monorepo", str(tmp_path)])
+    runner.invoke(app, ["export-md", "--monorepo", str(tmp_path)])
+
+    paths = PrographPaths(monorepo_root=tmp_path)
+    export_root = paths.projects_md_dir.parent
+    journal = export_root / "journal" / "prograph" / "journal.md"
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    # Worst case: even a file that carries the generated marker must be spared,
+    # because the cleanup only rglobs projects/.
+    journal.write_text(
+        "<!-- prograph:generated -->\n# journal\nentry-must-survive\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["export-md", "--monorepo", str(tmp_path)])
+    assert result.exit_code == 0, result.stdout
+    assert journal.is_file()
+    assert "entry-must-survive" in journal.read_text(encoding="utf-8")
+
+
 def test_export_md_idempotent_byte_stable(tmp_path: Path):
     _setup(tmp_path)
     runner.invoke(app, ["init", "--monorepo", str(tmp_path)])

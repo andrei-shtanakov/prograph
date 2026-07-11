@@ -31,21 +31,17 @@
 Three issues surfaced when Copilot reviewed a `derived/` refresh export. All are
 exporter/indexer bugs — the fix belongs here, then regenerate the vault (`export-md`).
 
-- [ ] **Absolute monorepo path leaks into the export.** `derived/graph/index.md` renders
-  `# Monorepo: /Users/<user>/labs/all_ai_orchestrators`, embedding a personal filesystem
-  path + username. Makes the exported vault non-portable and leaks workstation details.
-  Render a repo-relative identifier (e.g. the basename `all_ai_orchestrators`) or a
-  redacted placeholder in the graph-index renderer (`prograph/export/`), not the resolved
-  monorepo root.
-- [ ] **Graph-index contract list is not de-duplicated.** `derived/graph/index.md` lists
-  the same logical contract multiple times for one `declared_id` (e.g. spec-runner
-  `costs`/`json-result`/`spec-frontmatter`/`status` schemas) with differing owner counts,
-  making the index misleading. De-duplicate by `declared_id` (fallback `content_hash`)
-  when rendering the index and recompute the displayed owner counts — mirror the grouping
-  already used elsewhere for contract co-owners.
-- [ ] **kb-save journals live under regenerable `derived/`.** `derived/journal/**` (e.g.
-  `derived/journal/prograph/journal.md`) is written by the `kb-save` skill and marks
-  itself "not authoritative, not regenerable / append-only", yet sits under `derived/`
-  whose contract is "regenerable export output". A future `export-md` refresh could
-  overwrite an append-only log. Either move kb-save journals out of `derived/` or have the
-  exporter treat `derived/journal/**` as off-limits (never write/overwrite there).
+- [x] **Absolute monorepo path leaks into the export.** ✅ `render_index` now renders the
+  repo-relative basename (`# Monorepo: all_ai_orchestrators`) via `PurePath(...).name`, not
+  the resolved absolute root — no more home dir / username leak. (`render.py`; test
+  `test_render_index_uses_repo_relative_root_not_absolute_path`.)
+- [x] **Graph-index contract list is not de-duplicated.** ✅ `render_index` de-duplicates by
+  `declared_id` (contracts without one stay per-slug); the displayed owner count is the max
+  across the merged rows (rows overlap — never sum). (`render.py`; tests
+  `test_render_index_dedups_contracts_by_declared_id`,
+  `test_render_index_keeps_hashonly_contracts_distinct`.)
+- [x] **kb-save journals live under regenerable `derived/`.** ✅ Verified safe by design: the
+  stale-MD cleanup (`_cleanup_stale_project_mds`) is scoped to `projects/` and gated on the
+  `<!-- prograph:generated -->` marker, and the exporter never writes under `journal/`. A
+  journal file — even one carrying the marker — survives an export refresh. Locked by a
+  regression test (`test_export_md_leaves_journal_untouched`). No code change needed.

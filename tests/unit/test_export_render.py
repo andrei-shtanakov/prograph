@@ -205,7 +205,66 @@ def test_render_index_minimal():
         recent_changes=[],
     )
     md = render_index(overview)
-    assert "# Monorepo: /tmp/mr" in md
+    # Repo-relative identifier (basename), not the absolute path.
+    assert "# Monorepo: mr" in md
     assert "- [[alpha]] — python" in md
     assert "- [[beta]] — rust" in md
     assert "- [[obs-v1]] — `json_schema` (2 owners)" in md
+
+
+def _overview(*, monorepo_root: str = "/tmp/mr", contracts=None) -> MonorepoOverview:
+    """Minimal MonorepoOverview for render_index tests."""
+    return MonorepoOverview(
+        monorepo_root=monorepo_root,
+        snapshot_id=1,
+        snapshot_ts="2026-05-26T00:00:00Z",
+        n_projects=0,
+        n_contracts=len(contracts or []),
+        n_edges=0,
+        projects=[],
+        contracts=contracts or [],
+        recent_changes=[],
+    )
+
+
+def test_render_index_uses_repo_relative_root_not_absolute_path():
+    """The graph index must not leak an absolute home dir / username."""
+    md = render_index(_overview(monorepo_root="/Users/alice/labs/all_ai_orchestrators"))
+    assert "# Monorepo: all_ai_orchestrators" in md
+    assert "/Users/alice" not in md
+
+
+def test_render_index_dedups_contracts_by_declared_id():
+    """Multiple content-hash rows sharing one declared_id render as a single
+    line, with the owner count taken as the max across the merged rows."""
+    md = render_index(
+        _overview(
+            contracts=[
+                ContractSummary(
+                    slug="obs-v1-a", declared_id="obs-v1", kind="json_schema", n_owners=2
+                ),
+                ContractSummary(
+                    slug="obs-v1-b", declared_id="obs-v1", kind="json_schema", n_owners=3
+                ),
+            ]
+        )
+    )
+    # Exactly one Contracts bullet, owner count = max(2, 3).
+    contract_lines = [ln for ln in md.splitlines() if ln.startswith("- [[") and "obs-v1" in ln]
+    assert len(contract_lines) == 1
+    assert "(3 owners)" in contract_lines[0]
+    assert "`obs-v1`" in contract_lines[0]
+
+
+def test_render_index_keeps_hashonly_contracts_distinct():
+    """Contracts without a declared_id are per-slug — not collapsed together."""
+    md = render_index(
+        _overview(
+            contracts=[
+                ContractSummary(slug="hash-aaa", declared_id=None, kind="raw", n_owners=1),
+                ContractSummary(slug="hash-bbb", declared_id=None, kind="raw", n_owners=1),
+            ]
+        )
+    )
+    bullets = [ln for ln in md.splitlines() if ln.startswith("- [[hash-")]
+    assert len(bullets) == 2
