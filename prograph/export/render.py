@@ -11,9 +11,11 @@ All output is deterministic given identical input.
 from __future__ import annotations
 
 import json
+from pathlib import PurePath
 
 from prograph.models import (
     ContractDescription,
+    ContractSummary,
     MonorepoOverview,
     OutboundEdge,
     ProjectDescription,
@@ -298,7 +300,11 @@ def render_index(
     lines: list[str] = ["<!-- prograph:generated -->", ""]
     lines.append(frontmatter)
     lines.append("")
-    lines.append(f"# Monorepo: {overview.monorepo_root}")
+    # Render a repo-relative identifier, not the absolute filesystem path — the
+    # latter leaks a personal home dir / username and makes the export
+    # non-portable across machines.
+    root_name = PurePath(overview.monorepo_root).name or overview.monorepo_root
+    lines.append(f"# Monorepo: {root_name}")
     lines.append("")
 
     lines.append("## Projects")
@@ -323,9 +329,21 @@ def render_index(
     lines.append("## Contracts")
     lines.append("")
     if overview.contracts:
+        # De-duplicate by declared_id: several content-hash rows can map to one
+        # logical contract, and listing each with a different owner count is
+        # misleading. Contracts without a declared_id stay per-slug (distinct
+        # files). Owner count = max across the merged rows — the rows describe
+        # the same contract's owners, so summing would double-count.
+        first: dict[str, ContractSummary] = {}
+        n_owners: dict[str, int] = {}
         for c in overview.contracts:
+            key = c.declared_id or f"slug:{c.slug}"
+            first.setdefault(key, c)
+            n_owners[key] = max(n_owners.get(key, 0), c.n_owners)
+        for key, c in first.items():
             display = c.declared_id or c.slug
-            owners_str = f"{c.n_owners} owner" + ("s" if c.n_owners != 1 else "")
+            n = n_owners[key]
+            owners_str = f"{n} owner" + ("s" if n != 1 else "")
             lines.append(f"- [[{c.slug}]] — `{c.kind}` ({owners_str}) — `{display}`")
     else:
         lines.append("_None._")
