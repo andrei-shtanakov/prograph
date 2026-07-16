@@ -29,8 +29,8 @@ snapshot 2). The monorepo contains scratch/experimental directories (`spec-runne
 # Projects indexed on every `prograph index`.
 # Empty list or missing file -> ALL discovered projects are tracked (legacy behaviour).
 projects = [
-  "arbiter", "atp-platform", "deployer", "dispatcher", "Maestro",
-  "open-prose", "proctor", "prograph", "prograph-vault",
+  "arbiter", "atp-platform", "deployer", "dispatcher", "maestro",
+  "libretto", "proctor", "prograph", "prograph-vault",
   "robin-runtime", "robin-toolkit", "spec-runner", "spec-runner-vscode",
   "steward", "github-checker",
 ]

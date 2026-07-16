@@ -11,7 +11,7 @@
 
 `prograph` is a new tool that maps a **monorepo** of independent projects and shows how they interact at the **API / contract / data-flow level**. It is a from-scratch design inspired by Sourcetrail's general idea (visual code navigator) but with a different center of gravity: **cross-project structure first, single-project symbol indexing second**.
 
-The motivating environment is `all_ai_orchestrators/` — a workspace with ~10 independent projects (`Maestro`, `arbiter`, `atp-platform`, `spec-runner`, `proctor-a`, `open-prose`, `agents-for-game`, plus testing/docs siblings) that interact via package deps, vendored files, MCP tool calls, and shared contracts (JSON Schemas). Holding the inter-project map in one's head no longer scales; existing tools (LSP, ctags, Sourcetrail) operate one project at a time.
+The motivating environment is `all_ai_orchestrators/` — a workspace with ~10 independent projects (`maestro` / product Maestro, `arbiter`, `atp-platform`, `spec-runner`, `proctor-a`, `libretto` formerly `open-prose`, `agents-for-game`, plus testing/docs siblings) that interact via package deps, vendored files, MCP tool calls, and shared contracts (JSON Schemas). Holding the inter-project map in one's head no longer scales; existing tools (LSP, ctags, Sourcetrail) operate one project at a time.
 
 `prograph` is built for two primary consumers:
 
