@@ -3,8 +3,8 @@
 Cross-project structure mapper for monorepos. Detects how independent projects in a workspace talk to each other (package deps, shared contracts, MCP calls) and exposes the graph to humans (browser UI) and AI agents (MCP).
 
 **Status:** M12 — declared file-based integrations (schema v10). M11's
-Spec/TODO drift detection is shipped; M12 adds explicit `[tool.prograph]
-reads/writes` declarations for integrations that static detectors cannot see
+Spec/TODO drift detection is shipped; M12 adds explicit `[tool.prograph] reads/writes`
+declarations for integrations that static detectors cannot see
 (for example a dashboard reading another repo's SQLite/log/config files).
 Declared integrations resolve to dashed `declared` graph edges with manifest
 evidence, browser styling, MCP/REST visibility, Markdown export, and stale
