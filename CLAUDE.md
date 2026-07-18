@@ -22,6 +22,7 @@ This is a from-scratch design replacing the vendored archived `Sourcetrail/` sub
 - M9 (module-level facts) plan: `docs/superpowers/plans/2026-05-26-prograph-m9-module-facts.md`
 - M10 (cross-project symbol references) plan: `docs/superpowers/plans/2026-05-26-prograph-m10-symbol-refs.md`
 - M11 (drift detection) plan: `docs/superpowers/plans/2026-05-26-prograph-m11-drift-detection.md`
+- M12 (declared file edges) plan: `docs/superpowers/plans/2026-07-10-prograph-declared-edges.md`
 
 ## Build system
 
@@ -73,7 +74,7 @@ uv run ruff format --check .
 uv run pyrefly check 'prograph/**/*.py' 'tests/unit/**/*.py' 'tests/integration/**/*.py'
 ```
 
-## Architecture (M11 state)
+## Architecture (M12 state)
 
 Two-layer build:
 
@@ -81,22 +82,22 @@ Two-layer build:
   - `discovery` recurses one level into Cargo + Python workspaces (M8)
   - `parsers/{python,rust,js,contracts}` — Python + Rust now ALSO emit `external_imports` per Module (M10); JS still manifest-only for cross-project refs
   - `intent/{mod,markdown}` — line-based markdown intent parser (M11)
-  - `detectors/{deps,contracts,mcp}` — all three kinds populate `EdgeCandidate.evidence` (M1-M8)
+  - `detectors/{deps,contracts,mcp,declared}` — deps/contracts/MCP plus M12 manifest-declared file edges; all populate `EdgeCandidate.evidence`
   - `resolvers/{python,rust}` — M10: dotted-name / `crate::a::b::Sym` → publisher project + sub-module path + symbol
-  - `drift` — detect_missing / detect_extra / detect_stale_todos (M11)
+  - `drift` — detect_missing / detect_extra / detect_stale_todos (M11) plus stale declared-path findings from M12
   - `diff`, `lock`, `indexer`
-  - `store` — SQLite schema **v9** (M11 adds `drift_findings`; v8 = M10 cross_project_symbol_refs; v7 = M9 module tables); query helpers `describe_*`, `monorepo_overview`, `project_by_name`, `snapshot_by_id`, `find_edges_filtered`, `find_edges_with_status_since`, `edge_evidence_for`, `search_fts`, `changelog_paginated`, **`refs_to_symbol`**, **`refs_from_project`**, **`drifts_for_project`**, **`find_drifts_filtered`**, **`recent_changelog_labels`**
+  - `store` — SQLite schema **v10** (M12 declared edges/stale declarations; v9 = drift_findings; v8 = cross_project_symbol_refs; v7 = module tables); query helpers `describe_*`, `monorepo_overview`, `project_by_name`, `snapshot_by_id`, `find_edges_filtered`, `find_edges_with_status_since`, `edge_evidence_for`, `search_fts`, `changelog_paginated`, **`refs_to_symbol`**, **`refs_from_project`**, **`drifts_for_project`**, **`find_drifts_filtered`**, **`recent_changelog_labels`**
   - `models` — pyclasses incl. M11 `DriftFindingRow`, M10 `SymbolRefRow`, M9 `ModuleRow`/`PublicSymbolRow`/`InternalImportRow`, M8 `DiffEdgeRow`, M7 `EdgeRow`/`EdgeEvidenceRow`/`SearchHit`
-  - `facts` — `Manifest`, `McpToolDecl`, `McpClientUse`, `ContractFile`, `Module`, `PublicSymbol`, `InternalImport`, `ExternalImport` (M10), `IntentDoc`/`IntentItem`/`TodoItem` (M11), `SymbolKind`, `ProjectFacts`
+  - `facts` — `Manifest`, `McpToolDecl`, `McpClientUse`, `ContractFile`, `DeclaredPath` (M12), `Module`, `PublicSymbol`, `InternalImport`, `ExternalImport` (M10), `IntentDoc`/`IntentItem`/`TodoItem` (M11), `SymbolKind`, `ProjectFacts`
   - `parsers/{python,rust}` append `.prograph/mcp_patterns/{python,rust}.scm` overrides to the bundled tree-sitter queries
   - `ts_queries/{python,rust,js}_symbols.scm` — module-level queries
-  - `migrations/v1.sql..v9.sql` — additive schema chain (v6 = edge_evidence FK repair, v7 = module tables, v8 = cross_project_symbol_refs, v9 = drift_findings)
+  - `migrations/v1.sql..v10.sql` — additive schema chain (v6 = edge_evidence FK repair, v7 = module tables, v8 = cross_project_symbol_refs, v9 = drift_findings, v10 = declared-edge/stale-declaration support)
 - **`prograph` (Python package):**
-  - `cli.py` — `init`, `index`, `status`, `export-md`, `mcp`, `serve`, `drift` (M11), `--version`
-  - `web_app.py` — FastAPI app + 13 REST endpoints; `/api/drifts?project=X[&kind=...]` (M11); `/api/symbol_refs?project=X[&symbol=Y][&direction=...]` (M10); `/api/graph?since=<snap>` (M8)
-  - `web_static/` — Static frontend; M11 side panel adds Drift findings section; M10 Inbound/Outbound references sections; XSS-safe DOM helpers
+  - `cli.py` — `init`, `index`, `status`, `export-md`, `mcp`, `serve`, `drift` (M11/M12), `--version`
+  - `web_app.py` — FastAPI app + REST endpoints; `/api/drifts?project=X[&kind=...]` (M11/M12); `/api/symbol_refs?project=X[&symbol=Y][&direction=...]` (M10); `/api/graph?since=<snap>` (M8)
+  - `web_static/` — Static frontend; M12 declared edges render dashed; M11 side panel adds Drift findings section; M10 Inbound/Outbound references sections; XSS-safe DOM helpers
   - `mcp_server.py` — MCP stdio server with **10 tools** (M11 adds `find_drifts`; M10 added `find_symbol_references`)
-  - `export/` — Markdown rendering with M11 Drift findings, M10 Inbound/Outbound references sections
+  - `export/` — Markdown rendering with M12 declared-edge suffixes/stale declarations, M11 Drift findings, M10 Inbound/Outbound references sections
   - `config.py`, `models.py` (incl. `DriftFindingRow`, `SymbolRefRow`, `DiffEdgeRow`, `ModuleRow`, etc.), `paths.py`
 
 ### Frontend DOM safety
@@ -124,7 +125,7 @@ aliases = ["alt-name-1", "alt-name-2"]
 
 The detector then resolves consumer deps against `declared_name` OR any alias. Name collisions across projects emit warnings counted in `IndexSummary.n_warnings`.
 
-## What is NOT in M11 (deferred to M12+)
+## Current deferrals
 
 - Auto-fix proposals — drift is reported, not auto-resolved.
 - Renamed-symbol pairing — missing/extra emit as separate findings without "looks like a rename" suggestion.

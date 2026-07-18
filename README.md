@@ -2,7 +2,13 @@
 
 Cross-project structure mapper for monorepos. Detects how independent projects in a workspace talk to each other (package deps, shared contracts, MCP calls) and exposes the graph to humans (browser UI) and AI agents (MCP).
 
-**Status:** M11 — Spec/TODO drift detection (v1.3). Every index run extracts declared intent from each project's `README.md` + `TODO.md` + `docs/superpowers/specs/*.md` (recognising headings `## Public surface`, `## MCP tools exposed`, `## Contracts declared`, `## TODO`) and compares against detected reality. Three drift kinds are persisted in `drift_findings`: **missing** (declared but not implemented), **extra** (implemented but not declared — fires only when the project has SOME intent docs), and **stale_todo** (open TODO whose tokens overlap a recent change_log label). Exposed via MCP tool `find_drifts`, CLI `prograph drift`, REST endpoint `GET /api/drifts`, MD project-card section "## Drift findings", browser UI side panel. Closes the original 2026-05-25 brainstorm requirement "Spec/TODO-driven target state".
+**Status:** M12 — declared file-based integrations (schema v10). M11's
+Spec/TODO drift detection is shipped; M12 adds explicit `[tool.prograph] reads/writes`
+declarations for integrations that static detectors cannot see
+(for example a dashboard reading another repo's SQLite/log/config files).
+Declared integrations resolve to dashed `declared` graph edges with manifest
+evidence, browser styling, MCP/REST visibility, Markdown export, and stale
+declaration drift when the target path disappears.
 
 See `docs/superpowers/specs/2026-05-25-prograph-design.md` for the full design and `docs/superpowers/plans/` for milestone plans.
 
@@ -24,7 +30,8 @@ prograph index [--export-md]  # discovers projects, parses manifests, detects ed
 prograph status [--json]      # shows discovered projects + latest snapshot summary
 prograph index --json         # IndexSummary JSON (snapshot_id, n_projects, n_edges, n_changes, ...)
 prograph export-md            # re-render MD from latest snapshot (no reindex)
-prograph drift [--kind missing|extra|stale_todo] [--json]   # show drift findings (M11)
+prograph drift [--kind missing|extra|stale_todo|stale_declaration] [--json]
+                              # show drift findings (M11/M12)
 prograph mcp                  # MCP stdio server for AI clients
 prograph serve [--host 127.0.0.1] [--port 7700]   # browser UI + REST
 prograph --version            # print prograph + core versions
@@ -70,15 +77,16 @@ but not discovered) — report only, nothing is indexed or written.
 > longer tracked. This is expected — the graph now reflects the tracked set —
 > not a mass deletion bug.
 
-### Detected edge kinds (M4)
+### Detected edge kinds (M4 + M12)
 
 | Kind | Source | Identity |
 |---|---|---|
 | `package_dep` | Manifest deps (`[project].dependencies`, `[dependencies]`, `dependencies`...) | `(from, to, dep_name)` — version_req in attrs |
 | `mcp_call` | `@server.tool()` decorator / `.tool("name", ...)` registration server-side; `.call_tool("name", ...)` / `.invoke_tool(...)` client-side. Python + Rust source scanned via tree-sitter. | `(from, to, tool)` |
 | `contract_link` | JSON Schema / OpenAPI / `.proto` files with matching `$id` (or identical content hash) across ≥2 projects. | `(from_project, to_contract)` |
+| `declared` | Manifest declarations under `[tool.prograph] reads = [...]` / `writes = [...]` or Rust `[package.metadata.prograph]`. Used for file-based integrations invisible to imports/MCP/contracts. | `(from_project, to_project, mode, path)` — attrs include `mode` and `path` |
 
-Edges are aggregated regardless of source: a single `prograph index` produces all three kinds in one snapshot.
+Edges are aggregated regardless of source: a single `prograph index` produces all edge kinds in one snapshot.
 
 ### Module-level facts (M9)
 
@@ -117,15 +125,39 @@ For each project, prograph reads markdown intent docs and extracts:
 - Items under `## Contracts declared` / `## Contracts` → declared contracts
 - Checkboxes (`- [ ]`) in `TODO.md` or under `## TODO` → open TODOs
 
-These are compared against M4's `mcp_decls` / `contracts` and M9's `public_symbols`:
+These are compared against M4's `mcp_decls` / `contracts`, M9's
+`public_symbols`, and M12 declared paths:
 
 - **Missing**: in intent, not in reality. Confidence=high.
 - **Extra**: in reality, not in intent (only flagged when SOME intent exists for that kind).
 - **Stale TODO**: open `[ ]` item whose 2+ significant tokens (or strong ticket-ID like LABS-87) overlap with a recent change_log label. Confidence=low.
+- **Stale declaration**: a declared read/write path no longer exists on disk.
 
 Auto-generated MD files (those prograph itself wrote) are skipped via the `<!-- prograph:generated -->` marker on the first line.
 
 Query: `prograph drift --kind missing` for CLI; `find_drifts` MCP tool for AI agents.
+
+### Declared file-based integrations (M12)
+
+Some ecosystem edges are intentional but invisible to static source detectors:
+a collector can read a sibling repo's database, log directory, config file, or
+generated artifacts without importing its package or sharing a contract file.
+Declare those edges in the consuming project's manifest:
+
+```toml
+[tool.prograph]
+reads = [
+  "proctor/config/proctor.yaml",
+  "proctor/data/state.db",
+]
+writes = [
+  "prograph-vault/derived/graph/",
+]
+```
+
+`prograph index` validates each path, resolves the workspace-relative prefix to
+a tracked project, emits a dashed `declared` edge, and records manifest
+file/line evidence. Missing targets become `stale_declaration` drift findings.
 
 ### Working with workspace sub-packages
 
@@ -170,7 +202,7 @@ The 10 tools are:
 | `search` | FTS over project + contract names. |
 | `snapshot_info` | Snapshot metadata (latest or by id). |
 | `find_symbol_references` (M10) | Cross-project symbol citations — inbound ("who imports my X?") or outbound. |
-| `find_drifts` (M11) | Spec/TODO drift findings — filter by project_name and/or kind (missing/extra/stale_todo). |
+| `find_drifts` (M11/M12) | Spec/TODO/declaration drift findings — filter by project_name and/or kind (missing/extra/stale_todo/stale_declaration). |
 
 ### Extending MCP detection
 
@@ -216,17 +248,17 @@ Static assets (cytoscape.js, cose-bilkent, Pico CSS) load from a CDN. Internet r
 | `GET /api/snapshots[?limit=]` | List of snapshots. |
 | `GET /api/snapshots/{id}` | Snapshot metadata. |
 | `GET /api/symbol_refs?project=&symbol=&direction=` (M10) | Cross-project symbol citations. |
-| `GET /api/drifts?project=&kind=` (M11) | Spec/TODO drift findings. |
+| `GET /api/drifts?project=&kind=` (M11/M12) | Spec/TODO/declaration drift findings. |
 
 No auth — bind to 127.0.0.1 (default). `--host 0.0.0.0` prints a warning.
 
-### Deferred to M12+ (post-1.3)
+### Deferred
 
 - **Type signatures + docstrings** on `PublicSymbol` — tree-sitter already sees them; surfacing them in MCP / MD is a small enrichment task.
 - **JS cross-project symbol resolution** — package.json `exports` maze; M10 covers Python + Rust only.
 - **`pub use` re-export chain following** in Rust — M10 lands at the directly-imported crate.
-- **Auto-fix proposals for drift** — M11 reports, doesn't suggest patches.
-- **Renamed-symbol pairing** — M11 emits missing/extra separately; no "looks like a rename" heuristic.
+- **Auto-fix proposals for drift** — prograph reports drift, it doesn't suggest patches.
+- **Renamed-symbol pairing** — missing/extra emit separately; no "looks like a rename" heuristic.
 - **Drift trend visualisation** — temporal drift counts over time. Storage supports it.
 - **Cross-project drift** — "Maestro spec says it uses arbiter::Decider but symbol_refs doesn't show it".
 - **External tracker matching** — TODO ↔ Linear / GitHub issues.
