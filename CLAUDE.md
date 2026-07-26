@@ -10,13 +10,13 @@ This is a from-scratch design replacing the vendored archived `Sourcetrail/` sub
 
 ## Design and plans
 
-Specs (`docs/superpowers/specs/`):
+Specs:
 
-- Full design spec: `2026-05-25-prograph-design.md`
-- Declared edges (M12): `2026-07-10-prograph-declared-edges-design.md`
-- Tracked-projects allowlist: `2026-07-10-prograph-tracked-projects-design.md`
+- Full design spec: `docs/superpowers/specs/2026-05-25-prograph-design.md`
+- Declared edges (M12): `docs/superpowers/specs/2026-07-10-prograph-declared-edges-design.md`
+- Tracked-projects allowlist: `docs/superpowers/specs/2026-07-10-prograph-tracked-projects-design.md`
 
-Plans (`docs/superpowers/plans/`):
+Plans:
 
 - M1 (foundation) plan: `docs/superpowers/plans/2026-05-25-prograph-m1-foundation.md`
 - M2 (Python indexer) plan: `docs/superpowers/plans/2026-05-25-prograph-m2-python-indexer.md`

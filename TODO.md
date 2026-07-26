@@ -2,7 +2,9 @@
 
 Open items carry optional inline tags — `@owner:`, `@blocked_by:`, `@trigger:` — in the
 tail of the checkbox line, per the ecosystem handoff
-`_cowork_output/2026-07-26-plan-fields-and-todo-coverage-handoff.md` §3. Robin's parser
+`../_cowork_output/2026-07-26-plan-fields-and-todo-coverage-handoff.md` §3 — a dev-only
+coordination workspace one level up, outside this repo and absent from a standalone
+clone. Robin's parser
 (robin-runtime#27, merged 2026-07-26) strips them from the item identity key, so tagging
 does not orphan an item's history. An absent tag means "not decided yet" — do not invent
 values to fill the column.
@@ -29,22 +31,24 @@ values to fill the column.
 - [ ] **Graph-vs-registry drift check** @owner:andrei
   The invariant — "every link in the integration map has a corresponding graph edge, and
   every graph edge is in the map" — is a fleet-agent check, not a prograph feature; it is
-  specified in `devtools/proposals/2026-07-10-graph-vs-registry-check.md` (status: proposal,
-  2026-07-10) and would live in workspace `devtools/`, not in this repo.
+  specified in `../devtools/proposals/2026-07-10-graph-vs-registry-check.md` (status:
+  proposal, 2026-07-10) and would live in umbrella-workspace `../devtools/`, not in this
+  repo — that path resolves only inside the workspace checkout.
   prograph's own part is to expose the edge list cheaply, and that is **done**: `find_edges`
   MCP tool / `GET /api/graph` / `.prograph/graph.db`.
   The proposal's stated precondition — "ложные срабатывания на файловых интеграциях
   исчезнут, когда prograph научится declared edges" — was met when M12 shipped, so the
   allowlist workaround it describes is no longer needed. Authored side of the diff is
-  `prograph-vault/authored/registry/registry.md` ("Integration map"). Kept on this list
+  `../prograph-vault/authored/registry/registry.md` ("Integration map"). Kept on this list
   because the check consumes prograph's output; the implementation itself is not ours.
 
 - [ ] **Workspace allowlist and index snapshot have drifted** @owner:andrei
-  Measured 2026-07-26 against `all_ai_orchestrators/.prograph/tracked.toml`:
+  Measured 2026-07-26 against `../.prograph/tracked.toml` (the umbrella workspace's own
+  allowlist, one level up — not this repo's):
   `open-prose` is still listed but the directory no longer exists — it was renamed to
   `libretto` on 2026-07-16 — so `index --discover` reports it as "allowlisted but not
   found", while `libretto` and `discovery` show up as untracked. This is the same stale
-  rename that `_cowork_output/2026-07-26-robin-mirror-list-drift-handoff.md` found in
+  rename that `../_cowork_output/2026-07-26-robin-mirror-list-drift-handoff.md` found in
   Robin's mirror list; both configs were written before the rename.
   `.prograph/graph.db` was last written 2026-07-10, which is why
   `registry.md` still calls coverage for robin-runtime, robin-toolkit, deployer, libretto,
