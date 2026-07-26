@@ -10,7 +10,14 @@ This is a from-scratch design replacing the vendored archived `Sourcetrail/` sub
 
 ## Design and plans
 
+Specs:
+
 - Full design spec: `docs/superpowers/specs/2026-05-25-prograph-design.md`
+- Declared edges (M12): `docs/superpowers/specs/2026-07-10-prograph-declared-edges-design.md`
+- Tracked-projects allowlist: `docs/superpowers/specs/2026-07-10-prograph-tracked-projects-design.md`
+
+Plans:
+
 - M1 (foundation) plan: `docs/superpowers/plans/2026-05-25-prograph-m1-foundation.md`
 - M2 (Python indexer) plan: `docs/superpowers/plans/2026-05-25-prograph-m2-python-indexer.md`
 - M3 (multi-language) plan: `docs/superpowers/plans/2026-05-26-prograph-m3-multilang-indexer.md`
@@ -23,6 +30,10 @@ This is a from-scratch design replacing the vendored archived `Sourcetrail/` sub
 - M10 (cross-project symbol references) plan: `docs/superpowers/plans/2026-05-26-prograph-m10-symbol-refs.md`
 - M11 (drift detection) plan: `docs/superpowers/plans/2026-05-26-prograph-m11-drift-detection.md`
 - M12 (declared file edges) plan: `docs/superpowers/plans/2026-07-10-prograph-declared-edges.md`
+- Tracked-projects allowlist plan: `docs/superpowers/plans/2026-07-10-prograph-tracked-projects.md`
+
+Open work is tracked in `TODO.md` (team-level items with `@owner:`/`@blocked_by:`/`@trigger:`
+inline tags); per-milestone steps stay in the plan files above.
 
 ## Build system
 
@@ -46,6 +57,7 @@ uv run maturin develop            # recompile + reinstall the extension in the v
 - The `extension-module` PyO3 feature is gated on a Cargo feature (`prograph-core/Cargo.toml [features]`) and enabled only via maturin — never by `cargo test` (which needs libpython linking).
 - `tempfile` is unpinned (`"3"`) now that MSRV is 1.85; the old `=3.15.0` pin was only needed under Rust 1.75. `indexmap` remains at 2.7.1 in Cargo.lock — 1.85 now permits 2.14+ (edition2024), but it is left pinned for a minimal diff; `cargo update -p indexmap` relaxes it.
 - `tree-sitter`, `tree-sitter-python`, `tree-sitter-rust` (M4) compile C source via `cc-rs`. First build takes ~60s; subsequent builds reuse the cache.
+- **`mcp` is `>=1.28.1,<2`.** The floor is a security floor — 1.28.1 is the patched version for CVE-2026-59950 / -52869 / -52870. The `<2` ceiling is deliberate: upstream has announced removals for v2 (the WebSocket transport and the experimental tasks API are already deprecated in 1.28.0), and Dependabot only ever raises the *lower* bound, so an unbounded specifier would happily resolve a breaking major. `mcp_server.py` imports only `mcp.server.Server`, `mcp.server.stdio.stdio_server` and `mcp.types` — none of the deprecated surface.
 
 ## Common commands
 
@@ -53,7 +65,7 @@ uv run maturin develop            # recompile + reinstall the extension in the v
 uv sync                                      # install deps + build Rust extension
 uv run prograph init [--monorepo PATH]       # create .prograph/ skeleton
 uv run prograph status [--monorepo PATH] [--json]   # show project candidates
-uv run prograph index [--monorepo PATH] [--export-md] [--json]   # index with optional MD export
+uv run prograph index [--monorepo PATH] [--export-md] [--discover] [--json]  # index; --discover audits the allowlist
 uv run prograph export-md [--monorepo PATH]                      # re-render MD from latest snapshot
 uv run prograph mcp [--monorepo PATH]                            # run MCP stdio server
 uv run prograph serve [--monorepo PATH] [--host 127.0.0.1] [--port 7700]  # browser UI + REST
@@ -73,6 +85,25 @@ uv run ruff check .
 uv run ruff format --check .
 uv run pyrefly check 'prograph/**/*.py' 'tests/unit/**/*.py' 'tests/integration/**/*.py'
 ```
+
+### CI: the local checks above ARE the gate
+
+`.github/workflows/` holds exactly one workflow — `governance.yml`, a thin caller into the
+umbrella's reusable governance gate (pinned at `governance-v1`). **There is no workflow that
+runs pytest, cargo test, ruff, clippy or pyrefly.** Nothing on the remote will catch a broken
+test or a type error, so run the block above locally before pushing and before claiming a
+change is green; a passing PR check page means the governance gate passed, not that the code
+works.
+
+`governance / gate` is a required status check on `master`, alongside a ruleset that requires
+one approving review plus a code-owner review (`.github/CODEOWNERS` → `@andrei-shtanakov`).
+A PR sitting at `mergeStateStatus: BLOCKED` with green checks is waiting on that review, not
+on CI.
+
+There is no `.github/dependabot.yml`; Dependabot PRs here are **security** updates opened
+from the alerts on the default branch, which is why they appear without a version-update
+config. They raise only the lower bound of a specifier — check whether the dependency needs
+a major ceiling too (see the `mcp` pin above).
 
 ## Architecture (M12 state)
 
@@ -104,8 +135,6 @@ Two-layer build:
 
 All static frontend code uses `prograph/web_static/dom.js`'s `el(tag, attrs, children)` helper to construct DOM. **No `innerHTML` assignments anywhere.** The unit test `tests/unit/test_web_static.py::test_app_js_does_not_use_innerHTML` enforces this. If you add UI code, route it through `el()` — pass user-controlled values as string children (auto-escaped via `createTextNode`) or as attribute values.
 
-The Rust↔Python boundary remains data-only.
-
 ### MCP detection pattern overrides
 
 `.prograph/mcp_patterns/{python,rust}.scm` files are appended to the bundled tree-sitter queries at parse time. Use them to recognise project-specific MCP idioms without forking the crate.
@@ -113,6 +142,27 @@ The Rust↔Python boundary remains data-only.
 Tests live in `tests/` (pytest) and as inline `#[cfg(test)]` modules in each Rust source file.
 
 The Rust↔Python boundary remains data-only.
+
+### Tracked-projects allowlist
+
+`.prograph/tracked.toml` (created by `prograph init`, never overwritten by a re-run) lists
+the top-level directory names to index:
+
+```toml
+projects = ["arbiter", "atp-platform", "prograph"]
+```
+
+Workspace members of a tracked root are pulled in automatically. An **empty list or a
+missing file means "index everything"** (legacy behaviour); a malformed file is a hard
+error in every command that reads it (`_read_tracked_or_exit` in `cli.py`) rather than a
+silent fallback, because a partial allowlist would present a wrong picture.
+
+`discovery::tracked_closure` + `discovery::missing_names` (Rust, exposed via PyO3) are the
+single source of truth for "is this candidate tracked" — the indexer filters through them
+right after `scan_monorepo`, and the Python-side audit calls the same helpers so the two
+cannot drift. `index --discover` / `status` / `serve` report **untracked** (on disk, not
+listed) and **missing** (listed, not on disk) without indexing them. A stale rename shows
+up as a `missing` entry — see `TODO.md`.
 
 ### Workspace aliases
 
@@ -172,8 +222,13 @@ Then `git diff` to review the change before committing.
 - После открытия PR — прочитать ревью **GitHub Copilot**: валидные замечания исправлять
   новыми коммитами в ту же ветку; невалидные — ответить с обоснованием, **не применять
   вслепую**; итерировать, пока не останется открытых замечаний.
-- **Не мержить.** Мерж делает пользователь.
+- **Не мержить.** Мерж делает пользователь. На `master` ruleset требует зелёный
+  `governance / gate` + 1 approving review + ревью code owner'а, поэтому PR с зелёными
+  чеками остаётся `BLOCKED` до ревью — это нормально, не повод что-то чинить.
 - После мержа пользователем: `git switch master && git pull --ff-only`, затем удалить
-  влитую ветку (`git branch -d <branch>`) и `git fetch --prune`; убрать прочие влитые ветки.
+  влитую ветку и `git fetch --prune`; убрать прочие влитые ветки.
+  Мержи здесь **squash**, поэтому `git branch -d` откажется удалять ветку («not fully
+  merged») и `git branch --merged master` её не покажет. Сверить содержимое
+  (`git diff master <branch>` должен быть пуст) и удалить через `git branch -D`.
 - Никогда не делать force-push в общие ветки; не трогать другие репо (см. scope выше).
 - Полное правило (SSOT): `../prograph-vault/authored/rules/git-workflow.md`.

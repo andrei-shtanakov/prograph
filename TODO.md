@@ -1,5 +1,14 @@
 # TODO
 
+Open items carry optional inline tags — `@owner:`, `@blocked_by:`, `@trigger:` — in the
+tail of the checkbox line, per the ecosystem handoff
+`../_cowork_output/2026-07-26-plan-fields-and-todo-coverage-handoff.md` §3 — a dev-only
+coordination workspace one level up, outside this repo and absent from a standalone
+clone. Robin's parser
+(robin-runtime#27, merged 2026-07-26) strips them from the item identity key, so tagging
+does not orphan an item's history. An absent tag means "not decided yet" — do not invent
+values to fill the column.
+
 ## TODO
 
 - [x] **Declared edges (M12): file-based integrations the detectors cannot see.**
@@ -19,12 +28,34 @@
   Related noise for any graph tool: repo namespace vs runtime service-id split
   (repo `proctor` vs service `proctor-a`, ADR 2026-07-07) — declared edges should name
   repo paths, not runtime ids.
-- [ ] **Graph-vs-registry drift check** — "every link in the COWORK_CONTEXT integration
-  map has a corresponding graph edge" is a fleet-agent invariant, not a prograph feature;
-  tracked in `devtools/proposals/2026-07-10-graph-vs-registry-check.md`. prograph's part
-  is only to expose the edge list cheaply (already done: `find_edges` MCP tool /
-  `/api/graph`). With declared edges shipped, the next step is to require
-  registry links to have either detected or manifest-declared graph evidence.
+- [ ] **Graph-vs-registry drift check** @owner:andrei
+  The invariant — "every link in the integration map has a corresponding graph edge, and
+  every graph edge is in the map" — is a fleet-agent check, not a prograph feature; it is
+  specified in `../devtools/proposals/2026-07-10-graph-vs-registry-check.md` (status:
+  proposal, 2026-07-10) and would live in umbrella-workspace `../devtools/`, not in this
+  repo — that path resolves only inside the workspace checkout.
+  prograph's own part is to expose the edge list cheaply, and that is **done**: `find_edges`
+  MCP tool / `GET /api/graph` / `.prograph/graph.db`.
+  The proposal's stated precondition — "ложные срабатывания на файловых интеграциях
+  исчезнут, когда prograph научится declared edges" — was met when M12 shipped, so the
+  allowlist workaround it describes is no longer needed. Authored side of the diff is
+  `../prograph-vault/authored/registry/registry.md` ("Integration map"). Kept on this list
+  because the check consumes prograph's output; the implementation itself is not ours.
+
+- [ ] **Workspace allowlist and index snapshot have drifted** @owner:andrei
+  Measured 2026-07-26 against `../.prograph/tracked.toml` (the umbrella workspace's own
+  allowlist, one level up — not this repo's):
+  `open-prose` is still listed but the directory no longer exists — it was renamed to
+  `libretto` on 2026-07-16 — so `index --discover` reports it as "allowlisted but not
+  found", while `libretto` and `discovery` show up as untracked. This is the same stale
+  rename that `../_cowork_output/2026-07-26-robin-mirror-list-drift-handoff.md` found in
+  Robin's mirror list; both configs were written before the rename.
+  `.prograph/graph.db` was last written 2026-07-10, which is why
+  `registry.md` still calls coverage for robin-runtime, robin-toolkit, deployer, libretto,
+  steward and discovery "sparse/intent-only until the next full prograph export".
+  Fix is operational, not code: update the allowlist, re-run `prograph index --discover
+  --export-md`, then re-check the registry. Note the file lives in the umbrella workspace
+  (root git repo, no remote), not in this repo — it is edited there, not via a prograph PR.
 
 ## Exporter hygiene (from prograph-vault PR #10 Copilot review, 2026-07-11)
 
