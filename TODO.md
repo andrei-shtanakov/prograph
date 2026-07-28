@@ -28,7 +28,7 @@ values to fill the column.
   Related noise for any graph tool: repo namespace vs runtime service-id split
   (repo `proctor` vs service `proctor-a`, ADR 2026-07-07) — declared edges should name
   repo paths, not runtime ids.
-- [ ] **Graph-vs-registry drift check** @owner:andrei
+- [ ] **Graph-vs-registry drift check** @owner:andrei @id:graph-vs-registry-drift-check
   The invariant — "every link in the integration map has a corresponding graph edge, and
   every graph edge is in the map" — is a fleet-agent check, not a prograph feature; it is
   specified in `../devtools/proposals/2026-07-10-graph-vs-registry-check.md` (status:
@@ -42,7 +42,7 @@ values to fill the column.
   `../prograph-vault/authored/registry/registry.md` ("Integration map"). Kept on this list
   because the check consumes prograph's output; the implementation itself is not ours.
 
-- [ ] **Workspace allowlist and index snapshot have drifted** @owner:andrei
+- [ ] **Workspace allowlist and index snapshot have drifted** @owner:andrei @id:workspace-allowlist-index-drift
   Measured 2026-07-26 against `../.prograph/tracked.toml` (the umbrella workspace's own
   allowlist, one level up — not this repo's):
   `open-prose` is still listed but the directory no longer exists — it was renamed to
