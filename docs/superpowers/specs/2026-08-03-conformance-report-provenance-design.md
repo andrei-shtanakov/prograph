@@ -33,6 +33,8 @@ spec lands, the payload is frozen: further shape changes bump the version.
 ### D2. Provenance block (normative)
 
 ```yaml
+# Illustrative example — every value below is a placeholder, not a required constant.
+# The one load-bearing relationship: snapshot.indexed_at precedes generated_at.
 generated_at: 2026-08-03T12:41:07Z   # REPORT time: when this JSON was formed (UTC ISO-8601)
 manifest:
   project: steward                   # tracked project owning the manifest
