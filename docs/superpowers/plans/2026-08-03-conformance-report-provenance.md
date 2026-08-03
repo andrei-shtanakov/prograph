@@ -641,6 +641,7 @@ def snapshot_content_hash(db_path: str) -> str:
             {
                 "attrs": attrs,
                 "from": e.from_name,
+                "from_kind": e.from_kind,
                 "kind": e.kind,
                 "to": e.to_name,
                 "to_kind": e.to_kind,
@@ -1090,7 +1091,10 @@ uv add --dev jsonschema
   "properties": {
     "schema": {"const": "conformance-report/v1"},
     "system": {"type": "string"},
-    "generated_at": {"type": "string"},
+    "generated_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
     "manifest": {
       "type": "object",
       "additionalProperties": false,
@@ -1107,7 +1111,10 @@ uv add --dev jsonschema
       "required": ["id", "indexed_at", "content_hash", "complete"],
       "properties": {
         "id": {"type": "integer"},
-        "indexed_at": {"type": "string"},
+        "indexed_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+        },
         "content_hash": {
           "type": "string",
           "pattern": "^prograph-snapshot/v1\\+sha256:[0-9a-f]{64}$"
