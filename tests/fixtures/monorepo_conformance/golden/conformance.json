@@ -147,13 +147,36 @@
       "suppressed_by": null
     }
   ],
+  "generated_at": "2026-08-03T12:00:00Z",
   "manifest": {
-    "path": "gamma/spec/intended-graph.yaml",
+    "path": "spec/intended-graph.yaml",
+    "project": "gamma",
     "sha256": "02b997c9e8621e57dda58f8688c7f98d67d381368b4dc53ebe009870eb0701e9"
+  },
+  "projects": {
+    "alpha": {
+      "commit": null,
+      "dirty": null
+    },
+    "beta": {
+      "commit": null,
+      "dirty": null
+    },
+    "delta": {
+      "commit": null,
+      "dirty": null
+    },
+    "gamma": {
+      "commit": null,
+      "dirty": null
+    }
   },
   "schema": "conformance-report/v1",
   "snapshot": {
-    "id": 1
+    "complete": true,
+    "content_hash": "prograph-snapshot/v1+sha256:f643f18a77b0ae248a5f8bff9a393214f33f1726e9780cca4a45b40875e3d49d",
+    "id": 1,
+    "indexed_at": "2026-08-03T00:00:00Z"
   },
   "summary": {
     "findings": {
@@ -170,5 +193,10 @@
       "violation": 1
     }
   },
-  "system": "fixture-feed"
+  "system": "fixture-feed",
+  "tool": {
+    "name": "prograph",
+    "schema": "intended-graph/v1",
+    "version": "0.1.0"
+  }
 }
