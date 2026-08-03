@@ -28,6 +28,7 @@ values to fill the column.
   Related noise for any graph tool: repo namespace vs runtime service-id split
   (repo `proctor` vs service `proctor-a`, ADR 2026-07-07) — declared edges should name
   repo paths, not runtime ids.
+- [ ] **Intended graph v1 + `prograph conformance`** — prescriptive plane поверх существующих EdgeKind: authored-манифест `spec/intended-graph.yaml` в целевом репо, трёхзначные вердикты (conformant/violation/unknown), таксономия findings без contract-pin-drift (вопрос закрыт пилотом WS-005 — pin-freshness владеют repo-local две гарантии). Спека: `docs/superpowers/specs/2026-08-03-prograph-intended-graph-design.md` (draft, ждёт решений владельца по 3 открытым вопросам); реализация — после ревью спеки. Потребитель: steward `GC-ARCH-CONFORMANCE` (их TODO §6b ждёт эту схему) @owner:andrei @id:intended-graph-v1
 - [ ] **Graph-vs-registry drift check** @owner:andrei @id:graph-vs-registry-drift-check
   The invariant — "every link in the integration map has a corresponding graph edge, and
   every graph edge is in the map" — is a fleet-agent check, not a prograph feature; it is
