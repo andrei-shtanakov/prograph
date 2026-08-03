@@ -154,3 +154,31 @@ def test_missing_file_is_manifest_error(tmp_path: Path) -> None:
 def test_non_mapping_root_rejected(tmp_path: Path) -> None:
     with pytest.raises(ManifestError, match="mapping"):
         load_manifest(_write(tmp_path, "- just\n- a list\n"))
+
+
+def test_read_intended_path(tmp_path: Path) -> None:
+    from prograph.config import read_intended_path
+
+    py = tmp_path / "pyproject.toml"
+    py.write_text(
+        '[project]\nname = "x"\n\n[tool.prograph]\nintended = "arch/graph.yaml"\n',
+        encoding="utf-8",
+    )
+    assert read_intended_path(py) == "arch/graph.yaml"
+
+
+def test_read_intended_path_absent(tmp_path: Path) -> None:
+    from prograph.config import read_intended_path
+
+    py = tmp_path / "pyproject.toml"
+    py.write_text('[project]\nname = "x"\n', encoding="utf-8")
+    assert read_intended_path(py) is None
+    assert read_intended_path(tmp_path / "missing.toml") is None
+
+
+def test_read_intended_path_malformed(tmp_path: Path) -> None:
+    from prograph.config import read_intended_path
+
+    py = tmp_path / "pyproject.toml"
+    py.write_text("not [ toml", encoding="utf-8")
+    assert read_intended_path(py) is None
