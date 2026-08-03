@@ -1,6 +1,9 @@
 # Conformance report as versioned evidence — provenance + published schemas
 
-> Date: 2026-08-03 · Status: **Draft — awaiting owner review**
+> Date: 2026-08-03 · Status: **Revised after owner review (2026-08-03) — awaiting approval**
+> (review verdict: pattern confirmed; two mandatory fixes applied — report/snapshot time
+> split, JSON-Schema-vs-loader boundary — plus the minor clarifications; all three open
+> questions resolved by the owner, see «Resolved questions»)
 > Upstream: intended-graph v1 spec (#22, shipped in #24) and the owner ruling of
 > 2026-08-03 accepting «вариант 1» for steward's `GC-ARCH-CONFORMANCE`: the report is
 > versioned evidence consumed offline; a green gate over a correct-but-stale report is
@@ -30,14 +33,16 @@ spec lands, the payload is frozen: further shape changes bump the version.
 ### D2. Provenance block (normative)
 
 ```yaml
+generated_at: 2026-08-03T12:41:07Z   # REPORT time: when this JSON was formed (UTC ISO-8601)
 manifest:
-  path: spec/intended-graph.yaml     # relative to the monorepo root when possible
+  project: steward                   # tracked project owning the manifest
+  path: spec/intended-graph.yaml     # relative to THAT project's root (unambiguous cross-repo)
   sha256: <hex>                      # of the manifest bytes the run judged
 snapshot:
   id: 7
-  content_hash: <hex>                # D4 — deterministic hash of snapshot content
-  generated_at: 2026-08-03T12:41:07Z # report generation time, UTC ISO-8601
-  complete: true                     # D5 — explicit no-truncation attestation
+  indexed_at: 2026-08-02T09:15:44Z   # SNAPSHOT time: when code + git provenance were captured
+  content_hash: "prograph-snapshot/v1+sha256:<hex>"   # D4 — versioned canonicalization
+  complete: true                     # D5 — producer's no-truncation assertion
 tool:
   name: prograph
   version: 1.4.0                     # package version that produced the report
@@ -47,10 +52,18 @@ projects:                            # D3 — every project named by a manifest 
   dispatcher: {commit: <hex|null>, dirty: false}
 ```
 
+**Report age and snapshot age are distinct freshness dimensions.** `generated_at`
+(top-level) dates the JSON itself; `snapshot.indexed_at` (from the store's snapshot
+timestamp) dates the code state the verdicts describe. A fresh report over a
+month-old snapshot must be catchable: consumer freshness policy MUST check at least
+the **snapshot** age; report age is an optional additional bound where it carries
+operational meaning. (`content_hash` proves snapshot *identity*, never its
+*freshness*.)
+
 `elements`, `findings`, `exceptions`, `summary` are unchanged (full lists, no
-truncation — that is what `complete` attests). JSON stays byte-stable
-(`sort_keys`, stable ordering); `generated_at` is the only field that varies between
-two runs over identical inputs.
+truncation — that is what `complete` asserts). JSON stays byte-stable
+(`sort_keys`, stable ordering); with a fixed clock and fixed inputs the payload is
+byte-exact (D8).
 
 ### D3. Per-project provenance is captured at **index time**, not report time
 
@@ -71,41 +84,61 @@ verdicts computed over yesterday's tree, which is exactly the stale-report defec
   commit or `dirty: true` is *unfreshness the policy must treat as unknown*, never as
   clean.
 
-### D4. `snapshot.content_hash`
+### D4. `snapshot.content_hash` — versioned canonicalization
 
 SHA-256 over a canonical serialization of the snapshot's node and edge sets (sorted,
-attrs included), computed at report time from the store. Two snapshots of identical
-observed structure hash identically even if their `id`/`ts` differ; any structural
-change flips the hash. This is the report's second freshness anchor for the scheduled
-workspace check (D7) and costs one read of data the engine already loads.
+attrs included), computed at report time from the store, and **prefixed with the
+canonicalization version**: `"prograph-snapshot/v1+sha256:<hex>"`. Two snapshots of
+identical observed structure hash identically even if their `id`/`indexed_at` differ;
+any structural change flips the hash. The version prefix exists so a future change to
+the serialization cannot masquerade as graph drift: a consumer comparing hashes under
+different canonicalization versions knows it is comparing incomparables. This is the
+report's snapshot-identity anchor for the scheduled workspace check (D7) — identity,
+not freshness.
 
 ### D5. `complete`
 
-An explicit attestation by the tool: **every** intended element appears in `elements`,
-**every** computed finding appears in `findings`, and no cap, sampling or truncation
-was applied. v1 always emits `true` — the flag exists so any future bounded mode is
-forced to declare itself, and so the consumer can fail closed on its absence
-(`complete != true` ⇒ instrument failure, not a clean run). Exit-2 paths still produce
-no report at all.
+A **producer's assertion**, not an independently verifiable proof: prograph states
+that every intended element appears in `elements`, every computed finding appears in
+`findings`, and no cap, sampling or truncation was applied. v1 always emits `true` —
+the flag exists so any future bounded mode is forced to declare itself, and so the
+consumer can fail closed on its absence (`complete != true` ⇒ instrument failure, not
+a clean run). Exit-2 paths still produce no report at all.
 
 ### D6. Published contract artifacts (what steward vendors)
 
 Two JSON Schema (draft 2020-12) files become part of the repo, under the
 gate-verdicts-style contract layout:
 
-- `contracts/intended-graph/v1/schema.json` — the authored-manifest schema.
-  Owner: prograph (semantics live in `conformance/manifest.py`). steward's
+- `contracts/intended-graph/v1/schema.json` — the authored-manifest **structural**
+  schema. Owner: prograph (semantics live in `conformance/manifest.py`). steward's
   `GC-ARCH-SCHEMA` validates the manifest with a stock JSON Schema engine against its
   **byte-pinned vendored copy** — no second parser, no re-derived rules.
 - `contracts/conformance-report/v1/schema.json` — the report schema incl. the D2
   provenance block. steward's `GC-ARCH-CONFORMANCE` step 1 validates the report
   against its pinned copy.
 
-Sync is enforced on prograph's side by tests, not by trust:
+**The JSON Schema is NOT equivalent to prograph's loader, and does not claim to be.**
+The loader additionally enforces cross-object integrity a JSON Schema cannot honestly
+express: global id uniqueness across collections, endpoint-component existence, the
+two-file-endpoint ban, exception-target resolvability, and the constraint rule
+grammar (`manifest.py::_check_integrity`). The guarantee split is explicit:
+
+> **`GC-ARCH-SCHEMA` proves structural conformance** (shape, types, required fields,
+> closed enums, no unknown keys) via the pinned schema.
+> **Semantic/integrity validity is proven by the successfully produced report** — a
+> `conformance-report/v1` document exists only if prograph's strict loader accepted
+> the manifest (exit 2 writes no report).
+
+Sync is enforced on prograph's side by tests, not by trust — scoped to the
+structural layer:
 
 - every loader-accepted fixture manifest (monorepo_conformance, ws005_manifest, the
-  unit-test VALID document) validates against `intended-graph/v1/schema.json`, and the
-  loader-rejection fixtures fail it for the same reason class;
+  unit-test VALID document) validates against `intended-graph/v1/schema.json`;
+- fixtures rejected by the loader for **structural** reasons (unknown keys, missing
+  required fields, bad enum values, wrong types) fail the schema for the same reason
+  class — integrity-only rejections (duplicate ids, dangling refs, rule grammar) are
+  expected to PASS the schema and are asserted as such, documenting the boundary;
 - every `report_payload()` produced in the test suite validates against
   `conformance-report/v1/schema.json` (golden + engine unit reports).
 
@@ -119,7 +152,9 @@ prograph makes the report *carry the facts*; it does not check freshness policy.
 
 - **PR-gate (steward, offline):** report validates against pinned schema; manifest
   sha256 matches the checked-out manifest; `complete: true`; own repo HEAD equals
-  `projects.<self>.commit` and `dirty: false`; report age within stage policy.
+  `projects.<self>.commit` and `dirty: false`; **`snapshot.indexed_at` age within
+  stage policy** (mandatory freshness dimension), report `generated_at` age as an
+  optional additional bound.
 - **Scheduled workspace check (umbrella side):** re-derives every listed project's
   HEAD against `projects.*`, and the workspace snapshot against
   `snapshot.content_hash`; refreshes the evidence or opens drift. Its absence or
@@ -134,22 +169,28 @@ prograph makes the report *carry the facts*; it does not check freshness policy.
   Phase 1, `GC-ARCH-*`).
 - The scheduled workspace checker — umbrella/devtools tooling, not shipped code in
   either repo.
-- Report signing/attestation cryptography — out of scope for v1 evidence.
+- Report signing/attestation cryptography — out of scope for v1: the committed report
+  is **reviewable evidence**, not a cryptographically protected attestation, and is
+  named as such.
 
-## Open questions (owner)
+### D8. Injectable clock; the golden stays literally byte-exact
 
-1. **v11 migration vs check-time git.** D3 argues index-time capture is the only
-   honest chain and takes the additive migration. Confirm the migration is acceptable
-   now (alternative — check-time capture — is cheaper but reintroduces the stale-SHA
-   hole this spec exists to close).
-2. **Dirty trees at index time.** D3 records `dirty: true` and leaves refusal to
-   policy. Should `prograph index` additionally *warn* on dirty tracked projects, or
-   stay silent and let the report carry the fact?
-3. **`generated_at` and the golden.** The golden test will normalize `generated_at`
-   (and, for the fixture's non-git projects, `commit: null`) before comparison —
-   byte-stability claim then reads «byte-stable modulo `generated_at`». Acceptable, or
-   should the CLI grow a test-only clock override to keep the golden literally
-   byte-exact?
+Report timestamps come from an injectable clock inside the code (a `now` parameter /
+clock dependency threaded to `report_payload`), **not** a public test-only CLI flag,
+and the production payload is never normalized. Tests inject a frozen clock, so the
+golden is byte-stable under fixed inputs **and** a fixed clock — the byte-exactness
+claim holds literally. (Fixture projects are not git repos, so their
+`{commit: null, dirty: null}` provenance is deterministic without masking.)
+
+## Resolved questions (owner review, 2026-08-03)
+
+1. **v11 migration — accepted.** Check-time git capture would falsify provenance; the
+   additive migration is the honest chain (D3 stands).
+2. **Dirty trees at index time — warn.** `prograph index` warns on dirty tracked
+   projects, immediately and machine-readably (counted in `IndexSummary.n_warnings`
+   like other index warnings); indexing is not blocked — refusal stays policy.
+3. **Time handling — injectable clock** (now D8). No public test-only CLI flag, no
+   normalization of production payloads.
 
 ## Rollout
 
