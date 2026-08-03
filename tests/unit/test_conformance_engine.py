@@ -339,3 +339,96 @@ def test_constraint_component_outside_workspace() -> None:
     el = _by_id(report, "C-8")
     assert (el.verdict, el.reason) == ("unknown", "outside-workspace")
     assert [f.finding_class for f in report.findings] == ["orphan-component"]
+
+
+from prograph.conformance.engine import exit_code  # noqa: E402
+
+
+def test_undeclared_edge_between_modelled_projects() -> None:
+    # gamma -> alpha observed; both projects modelled; no interface covers it.
+    m = manifest(interfaces=[iface("I-01", "beta.lib", "alpha.api", "import")])
+    report = evaluate(m, graph(dep("alpha", "beta"), dep("gamma", "alpha")), TODAY)
+    undeclared = [f for f in report.findings if f.finding_class == "undeclared-edge"]
+    assert len(undeclared) == 1
+    assert undeclared[0].element is None
+    assert "gamma" in undeclared[0].detail and "alpha" in undeclared[0].detail
+
+
+def test_undeclared_edge_ignores_unmodelled_projects() -> None:
+    m = manifest(
+        components=[
+            {
+                "id": "alpha.api",
+                "project": "alpha",
+                "kind": "service",
+                "owner": "architects",
+                "responsibility": "api",
+            },
+        ]
+    )
+    # beta is not modelled → its edges never fire the finding.
+    report = evaluate(m, graph(dep("alpha", "beta"), dep("beta", "alpha")), TODAY)
+    assert report.findings == ()
+
+
+def test_undeclared_edge_skips_contract_nodes_and_self_edges() -> None:
+    m = manifest()
+    report = evaluate(m, graph(contract("alpha", "feed-v1"), dep("alpha", "alpha")), TODAY)
+    assert [f for f in report.findings if f.finding_class == "undeclared-edge"] == []
+
+
+def test_active_exception_suppresses_and_waives() -> None:
+    m = manifest(
+        interfaces=[iface("I-05", "alpha.api", "gamma.reader", "mcp")],
+        exceptions=[
+            {
+                "id": "EX-01",
+                "target": "I-05",
+                "reason": "next milestone",
+                "owner": "architects",
+                "expires": "2999-01-01",
+            }
+        ],
+    )
+    report = evaluate(m, graph(), TODAY)
+    finding = next(f for f in report.findings if f.finding_class == "missing-required-edge")
+    assert finding.suppressed_by == "EX-01"
+    assert _by_id(report, "I-05").waived_by == "EX-01"
+    assert report.exceptions[0].status == "active"
+    assert exit_code(report, frozenset({"missing-required-edge"}), frozenset()) == 0
+
+
+def test_expired_exception_is_a_violation_and_stops_suppressing() -> None:
+    m = manifest(
+        constraints=[constraint("C-1", "forbidden: gamma -> alpha", "import")],
+        exceptions=[
+            {
+                "id": "EX-02",
+                "target": "C-1",
+                "reason": "grandfathered",
+                "owner": "architects",
+                "expires": "2020-01-01",
+            }
+        ],
+    )
+    report = evaluate(m, graph(dep("gamma", "alpha")), TODAY)
+    classes = sorted(f.finding_class for f in report.findings)
+    assert classes == ["expired-waiver", "forbidden-edge"]
+    assert _by_id(report, "C-1").waived_by is None
+    assert report.exceptions[0].status == "expired"
+    assert exit_code(report, frozenset(), frozenset()) == 1
+
+
+def test_exit_code_default_policy() -> None:
+    # unknowns and report-only findings do not fail a default run (spec D7).
+    m = manifest(interfaces=[iface("I-05", "alpha.api", "gamma.reader", "mcp")])
+    report = evaluate(m, graph(dep("gamma", "alpha")), TODAY)  # + undeclared gamma->alpha
+    assert exit_code(report, frozenset(), frozenset()) == 0
+    assert exit_code(report, frozenset({"undeclared-edge"}), frozenset()) == 1
+    assert exit_code(report, frozenset(), frozenset({"unknown"})) == 1
+
+
+def test_violation_always_fails() -> None:
+    m = manifest(constraints=[constraint("C-1", "forbidden: gamma -> alpha", "import")])
+    report = evaluate(m, graph(dep("gamma", "alpha")), TODAY)
+    assert exit_code(report, frozenset(), frozenset()) == 1

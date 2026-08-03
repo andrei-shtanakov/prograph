@@ -357,7 +357,7 @@ def _constraint_result(
     comp_by_id: dict[str, Component],
     project_component_count: dict[str, int],
     observed: ObservedGraph,
-) -> tuple[ElementResult, Finding | None]:
+) -> tuple[ElementResult, Finding | None, ObservedEdge | None]:
     def result(verdict: str, reason: str | None) -> ElementResult:
         return ElementResult(
             id=con.id,
@@ -373,7 +373,7 @@ def _constraint_result(
             con.id,
             "manual-evidence element: verify by review, restated in every report",
         )
-        return result(VERDICT_UNKNOWN, REASON_MANUAL), finding
+        return result(VERDICT_UNKNOWN, REASON_MANUAL), finding, None
 
     rule = parse_rule(con.rule)  # load_manifest already guaranteed this parses
     src = _resolve_side(rule.src, comp_by_id)
@@ -386,27 +386,36 @@ def _constraint_result(
                 reason, finding = gap
                 # re-anchor the finding on the constraint, not the component
                 finding = Finding(finding.finding_class, con.id, finding.detail)
-                return result(VERDICT_UNKNOWN, reason), finding
+                return result(VERDICT_UNKNOWN, reason), finding, None
+
+    kind = DETECTOR_TO_KIND[con.detector]
+
+    # Search for matching edges (even if constraint is unevaluable, edges still count as
+    # declared). This must happen before the ambiguity check.
+    matched_edge: ObservedEdge | None = None
+    for e in observed.edges:
+        if e.kind != kind:
+            continue
+        if _side_matches(src, e, from_side=True) and _side_matches(dst, e, from_side=False):
+            matched_edge = e
+            break
 
     # Plan rule 2: a component endpoint is attributable only when it is the sole
     # modelled component of its project; otherwise project-granularity evidence
     # cannot pin the edge on it — honest unknown until module-level v1.1.
     for side in (src, dst):
         if side.component is not None and project_component_count[side.component.project] > 1:
-            return result(VERDICT_UNKNOWN, REASON_UNSUPPORTED), None
+            # Even when unevaluable, the matched edge is still "declared" by the constraint.
+            return result(VERDICT_UNKNOWN, REASON_UNSUPPORTED), None, matched_edge
 
-    kind = DETECTOR_TO_KIND[con.detector]
-    for e in observed.edges:
-        if e.kind != kind:
-            continue
-        if _side_matches(src, e, from_side=True) and _side_matches(dst, e, from_side=False):
-            finding = Finding(
-                "forbidden-edge",
-                con.id,
-                f"observed {e.from_name} -[{e.kind}]-> {e.to_name} matches {con.rule!r}",
-            )
-            return result(VERDICT_VIOLATION, None), finding
-    return result(VERDICT_CONFORMANT, None), None
+    if matched_edge is not None:
+        detail = (
+            f"observed {matched_edge.from_name} -[{matched_edge.kind}]-> "
+            f"{matched_edge.to_name} matches {con.rule!r}"
+        )
+        finding = Finding("forbidden-edge", con.id, detail)
+        return result(VERDICT_VIOLATION, None), finding, matched_edge
+    return result(VERDICT_CONFORMANT, None), None, None
 
 
 def evaluate(
@@ -431,17 +440,99 @@ def evaluate(
         project_component_count[comp.project] = project_component_count.get(comp.project, 0) + 1
 
     for con in manifest.constraints:
-        element, finding = _constraint_result(con, comp_by_id, project_component_count, observed)
+        element, finding, matched = _constraint_result(
+            con, comp_by_id, project_component_count, observed
+        )
         elements.append(element)
         if finding is not None:
             findings.append(finding)
+        if matched is not None:
+            covered.add(matched)
 
-    # Undeclared-edge + exceptions (Task 6) extend this function.
+    # Spec D5 undeclared-edge, bounded by plan rule 4 (project→project kinds only).
+    modelled_projects = {c.project for c in manifest.components}
+    for e in observed.edges:
+        if e.to_kind != "project" or e.from_name == e.to_name:
+            continue
+        if e.from_name not in modelled_projects or e.to_name not in modelled_projects:
+            continue
+        if e in covered:
+            continue
+        detail = f"observed {e.from_name} -[{e.kind}]-> {e.to_name} appears in no interface"
+        if e.path is not None:
+            detail += f" (path {e.path!r})"
+        findings.append(Finding("undeclared-edge", None, detail))
+
+    # Exceptions: active ones suppress findings + waive their element; expired ones are
+    # violations on the exception itself (spec D5) and suppress nothing.
+    exception_statuses: list[ExceptionStatus] = []
+    active_by_target: dict[str, str] = {}
+    for entry in manifest.exceptions:
+        expired = entry.expires < today
+        exception_statuses.append(
+            ExceptionStatus(
+                id=entry.id,
+                target=entry.target,
+                expires=entry.expires.isoformat(),
+                status="expired" if expired else "active",
+            )
+        )
+        if expired:
+            findings.append(
+                Finding(
+                    "expired-waiver",
+                    entry.id,
+                    f"exception on {entry.target} expired {entry.expires.isoformat()}",
+                )
+            )
+        else:
+            active_by_target[entry.target] = entry.id
+
+    if active_by_target:
+        findings = [
+            Finding(
+                f.finding_class,
+                f.element,
+                f.detail,
+                suppressed_by=active_by_target.get(f.element or ""),
+            )
+            for f in findings
+        ]
+        elements = [
+            ElementResult(
+                id=el.id,
+                element_type=el.element_type,
+                detector=el.detector,
+                verdict=el.verdict,
+                reason=el.reason,
+                waived_by=active_by_target.get(el.id),
+            )
+            for el in elements
+        ]
 
     findings.sort(key=lambda f: (f.finding_class, f.element or "", f.detail))
     return ConformanceReport(
         system=manifest.system,
         elements=tuple(elements),
         findings=tuple(findings),
-        exceptions=(),
+        exceptions=tuple(exception_statuses),
     )
+
+
+def exit_code(
+    report: ConformanceReport,
+    fail_on: frozenset[str],
+    fail_on_verdict: frozenset[str],
+) -> int:
+    """Spec D7 exit policy for exit 0 vs 1 (exit 2 is the CLI's tool-error path)."""
+    violation = any(
+        el.verdict == VERDICT_VIOLATION and el.waived_by is None for el in report.elements
+    )
+    expired = any(f.finding_class == "expired-waiver" for f in report.findings)
+    escalated_finding = any(
+        f.suppressed_by is None and f.finding_class in fail_on for f in report.findings
+    )
+    escalated_verdict = any(
+        el.waived_by is None and el.verdict in fail_on_verdict for el in report.elements
+    )
+    return 1 if (violation or expired or escalated_finding or escalated_verdict) else 0
