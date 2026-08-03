@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 from prograph import _core
+from prograph.conformance.manifest import (
+    FILE_PREFIX,
+    Component,
+    IntendedManifest,
+    Interface,
+)
 
 # Spec D4: closed verdict set.
 VERDICT_CONFORMANT = "conformant"
@@ -102,3 +109,244 @@ def load_observed(db_path: str) -> ObservedGraph | None:
         project_paths[name] = frozenset(paths)
 
     return ObservedGraph(projects=frozenset(names), edges=tuple(edges), project_paths=project_paths)
+
+
+@dataclass(frozen=True)
+class Finding:
+    """One report entry (spec D5). `element` is None for undeclared-edge."""
+
+    finding_class: str
+    element: str | None
+    detail: str
+    suppressed_by: str | None = None
+
+
+@dataclass(frozen=True)
+class ElementResult:
+    """Verdict for one intended element (spec D4)."""
+
+    id: str
+    element_type: str
+    detector: str
+    verdict: str
+    reason: str | None
+    waived_by: str | None = None
+
+
+@dataclass(frozen=True)
+class ExceptionStatus:
+    id: str
+    target: str
+    expires: str
+    status: str  # "active" | "expired"
+
+
+@dataclass(frozen=True)
+class ConformanceReport:
+    system: str
+    elements: tuple[ElementResult, ...]
+    findings: tuple[Finding, ...]
+    exceptions: tuple[ExceptionStatus, ...]
+
+
+@dataclass(frozen=True)
+class _FileEndpoint:
+    path: str
+
+
+def _path_matches(file_path: str, edge_path: str | None) -> bool:
+    """Plan rule 1: exact or segment-suffix match, './' normalized off."""
+    if edge_path is None:
+        return False
+    p = file_path.removeprefix("./")
+    return edge_path == p or edge_path.endswith("/" + p)
+
+
+def _component_gap(comp: Component, observed: ObservedGraph) -> tuple[str, Finding] | None:
+    """Orphan checks (spec D4/D5). Returns (unknown-reason, finding) or None."""
+    if comp.project not in observed.projects:
+        return (
+            REASON_OUTSIDE,
+            Finding(
+                "orphan-component",
+                comp.id,
+                f"project {comp.project!r} is not in the indexed workspace",
+            ),
+        )
+    known = observed.project_paths.get(comp.project) or frozenset()
+    if comp.scope and known:
+        prefix = comp.scope.rstrip("/") + "/"
+        if not any(p == comp.scope or p.startswith(prefix) for p in known):
+            return (
+                REASON_ORPHAN,
+                Finding(
+                    "orphan-component",
+                    comp.id,
+                    f"scope {comp.scope!r} matches nothing indexed in {comp.project!r}",
+                ),
+            )
+    return None
+
+
+def _match_interface(
+    detector: str,
+    producer: Component | _FileEndpoint,
+    consumer: Component | _FileEndpoint,
+    observed: ObservedGraph,
+) -> ObservedEdge | None:
+    """Return the first observed edge satisfying the interface, else None."""
+    if detector == "contract":
+        assert isinstance(producer, Component) and isinstance(consumer, Component)
+        producer_nodes = {
+            e.to_name
+            for e in observed.edges
+            if e.kind == "contract_link" and e.from_name == producer.project
+        }
+        for e in observed.edges:
+            if (
+                e.kind == "contract_link"
+                and e.from_name == consumer.project
+                and e.to_name in producer_nodes
+            ):
+                return e
+        return None
+
+    kind = DETECTOR_TO_KIND[detector]
+    if detector in ("import", "mcp"):
+        assert isinstance(producer, Component) and isinstance(consumer, Component)
+        for e in observed.edges:
+            if (
+                e.kind == kind
+                and e.from_name == consumer.project
+                and e.to_kind == "project"
+                and e.to_name == producer.project
+            ):
+                return e
+        return None
+
+    # declared
+    if isinstance(producer, _FileEndpoint):
+        assert isinstance(consumer, Component)
+        for e in observed.edges:
+            if (
+                e.kind == "declared"
+                and e.mode == "read"
+                and e.from_name == consumer.project
+                and _path_matches(producer.path, e.path)
+            ):
+                return e
+        return None
+    if isinstance(consumer, _FileEndpoint):
+        for e in observed.edges:
+            if (
+                e.kind == "declared"
+                and e.mode == "write"
+                and e.from_name == producer.project
+                and _path_matches(consumer.path, e.path)
+            ):
+                return e
+        return None
+    # component -> component: consumer reads producer's files, or producer writes into
+    # consumer's; honor the producer's scope as a workspace-relative path prefix when set.
+    scope_prefix = f"{producer.project}/{producer.scope.rstrip('/')}/" if producer.scope else None
+
+    def _scope_ok(e: ObservedEdge) -> bool:
+        if scope_prefix is None or e.path is None:
+            return True
+        return e.path.startswith(scope_prefix) or e.path == scope_prefix.rstrip("/")
+
+    for e in observed.edges:
+        if e.kind != "declared" or not _scope_ok(e):
+            continue
+        reads = (
+            e.mode == "read" and e.from_name == consumer.project and e.to_name == producer.project
+        )
+        writes = (
+            e.mode == "write" and e.from_name == producer.project and e.to_name == consumer.project
+        )
+        if reads or writes:
+            return e
+    return None
+
+
+def _interface_result(
+    iface: Interface,
+    comp_by_id: dict[str, Component],
+    observed: ObservedGraph,
+) -> tuple[ElementResult, Finding | None, ObservedEdge | None]:
+    def result(verdict: str, reason: str | None) -> ElementResult:
+        return ElementResult(
+            id=iface.id,
+            element_type="interface",
+            detector=iface.detector,
+            verdict=verdict,
+            reason=reason,
+        )
+
+    if iface.detector == "manual-evidence":
+        finding = Finding(
+            "manual-obligation",
+            iface.id,
+            "manual-evidence element: verify by review, restated in every report",
+        )
+        return result(VERDICT_UNKNOWN, REASON_MANUAL), finding, None
+
+    endpoints: list[Component | _FileEndpoint] = []
+    for raw in (iface.producer, iface.consumer):
+        if raw.startswith(FILE_PREFIX):
+            endpoints.append(_FileEndpoint(path=raw.removeprefix(FILE_PREFIX)))
+        else:
+            endpoints.append(comp_by_id[raw])
+    producer, consumer = endpoints
+
+    for endpoint in endpoints:
+        if isinstance(endpoint, Component):
+            gap = _component_gap(endpoint, observed)
+            if gap is not None:
+                reason, finding = gap
+                return result(VERDICT_UNKNOWN, reason), finding, None
+
+    if (
+        isinstance(producer, Component)
+        and isinstance(consumer, Component)
+        and producer.project == consumer.project
+    ):
+        return result(VERDICT_UNKNOWN, REASON_UNSUPPORTED), None, None
+
+    matched = _match_interface(iface.detector, producer, consumer, observed)
+    if matched is not None:
+        return result(VERDICT_CONFORMANT, None), None, matched
+    finding = Finding(
+        "missing-required-edge",
+        iface.id,
+        f"detector {iface.detector!r} observed no edge for {iface.producer} -> {iface.consumer}",
+    )
+    return result(VERDICT_UNKNOWN, None), finding, None
+
+
+def evaluate(
+    manifest: IntendedManifest, observed: ObservedGraph, today: dt.date
+) -> ConformanceReport:
+    """Evaluate every intended element against the observed graph (spec D4/D5)."""
+    comp_by_id = {c.id: c for c in manifest.components}
+    elements: list[ElementResult] = []
+    findings: list[Finding] = []
+    covered: set[ObservedEdge] = set()
+
+    for iface in manifest.interfaces:
+        element, finding, matched = _interface_result(iface, comp_by_id, observed)
+        elements.append(element)
+        if finding is not None:
+            findings.append(finding)
+        if matched is not None:
+            covered.add(matched)
+
+    # Constraints (Task 5), undeclared-edge + exceptions (Task 6) extend this function.
+
+    findings.sort(key=lambda f: (f.finding_class, f.element or "", f.detail))
+    return ConformanceReport(
+        system=manifest.system,
+        elements=tuple(elements),
+        findings=tuple(findings),
+        exceptions=(),
+    )

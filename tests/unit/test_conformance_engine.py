@@ -50,3 +50,203 @@ def declared(src: str, dst: str, path: str, mode: str = "read") -> ObservedEdge:
 
 def test_observed_edge_is_hashable() -> None:
     assert len({dep("a", "b"), dep("a", "b"), dep("a", "c")}) == 2
+
+
+from prograph.conformance.engine import evaluate  # noqa: E402  (single import point)
+from prograph.conformance.manifest import IntendedManifest  # noqa: E402
+
+
+def manifest(**overrides: object) -> IntendedManifest:
+    base: dict[str, object] = {
+        "schema": "intended-graph/v1",
+        "system": "t",
+        "components": [
+            {
+                "id": "alpha.api",
+                "project": "alpha",
+                "kind": "service",
+                "owner": "architects",
+                "responsibility": "api",
+            },
+            {
+                "id": "alpha.worker",
+                "project": "alpha",
+                "kind": "module",
+                "owner": "architects",
+                "responsibility": "worker",
+            },
+            {
+                "id": "beta.lib",
+                "project": "beta",
+                "kind": "module",
+                "owner": "architects",
+                "responsibility": "lib",
+            },
+            {
+                "id": "gamma.reader",
+                "project": "gamma",
+                "kind": "cli",
+                "owner": "architects",
+                "responsibility": "reader",
+            },
+        ],
+    }
+    base.update(overrides)
+    return IntendedManifest.model_validate(base)
+
+
+def _by_id(report, element_id):  # type: ignore[no-untyped-def]  # test helper
+    return next(e for e in report.elements if e.id == element_id)
+
+
+def iface(id_: str, producer: str, consumer: str, detector: str) -> dict[str, str]:
+    return {"id": id_, "producer": producer, "consumer": consumer, "detector": detector}
+
+
+def test_import_interface_conformant() -> None:
+    m = manifest(interfaces=[iface("I-01", "beta.lib", "alpha.api", "import")])
+    report = evaluate(m, graph(dep("alpha", "beta")), TODAY)
+    el = _by_id(report, "I-01")
+    assert (el.verdict, el.reason) == ("conformant", None)
+    assert report.findings == ()
+
+
+def test_import_interface_missing_edge() -> None:
+    m = manifest(interfaces=[iface("I-01", "beta.lib", "alpha.api", "import")])
+    report = evaluate(m, graph(), TODAY)
+    el = _by_id(report, "I-01")
+    assert (el.verdict, el.reason) == ("unknown", None)
+    assert [f.finding_class for f in report.findings] == ["missing-required-edge"]
+    assert report.findings[0].element == "I-01"
+
+
+def test_mcp_interface_conformant() -> None:
+    m = manifest(interfaces=[iface("I-01", "alpha.api", "gamma.reader", "mcp")])
+    report = evaluate(m, graph(mcp("gamma", "alpha")), TODAY)
+    assert _by_id(report, "I-01").verdict == "conformant"
+
+
+def test_contract_interface_needs_shared_node() -> None:
+    m = manifest(interfaces=[iface("I-01", "beta.lib", "gamma.reader", "contract")])
+    both = graph(contract("beta", "feed-v1"), contract("gamma", "feed-v1"))
+    only_one = graph(contract("beta", "feed-v1"), contract("gamma", "other-v1"))
+    assert _by_id(evaluate(m, both, TODAY), "I-01").verdict == "conformant"
+    assert _by_id(evaluate(m, only_one, TODAY), "I-01").verdict == "unknown"
+
+
+def test_declared_interface_file_producer() -> None:
+    # gamma.reader consumes a file published by beta → gamma declares the read.
+    m = manifest(interfaces=[iface("I-02", "file:beta/data/feed.txt", "gamma.reader", "declared")])
+    ok = graph(declared("gamma", "beta", "beta/data/feed.txt", "read"))
+    wrong_mode = graph(declared("gamma", "beta", "beta/data/feed.txt", "write"))
+    assert _by_id(evaluate(m, ok, TODAY), "I-02").verdict == "conformant"
+    assert _by_id(evaluate(m, wrong_mode, TODAY), "I-02").verdict == "unknown"
+
+
+def test_declared_file_path_segment_suffix_matches() -> None:
+    # Manifest writes a repo-generic path; the edge carries the workspace-relative one.
+    m = manifest(interfaces=[iface("I-02", "file:.steward/gv.jsonl", "gamma.reader", "declared")])
+    ok = graph(declared("gamma", "beta", "beta/.steward/gv.jsonl", "read"))
+    assert _by_id(evaluate(m, ok, TODAY), "I-02").verdict == "conformant"
+
+
+def test_declared_interface_file_consumer_requires_write() -> None:
+    m = manifest(interfaces=[iface("I-01", "gamma.reader", "file:beta/out.txt", "declared")])
+    ok = graph(declared("gamma", "beta", "beta/out.txt", "write"))
+    assert _by_id(evaluate(m, ok, TODAY), "I-01").verdict == "conformant"
+
+
+def test_same_project_pair_is_unsupported_resolution() -> None:
+    m = manifest(interfaces=[iface("I-04", "alpha.api", "alpha.worker", "import")])
+    report = evaluate(m, graph(dep("alpha", "alpha")), TODAY)
+    el = _by_id(report, "I-04")
+    assert (el.verdict, el.reason) == ("unknown", "unsupported-resolution")
+    assert report.findings == ()
+
+
+def test_manual_evidence_interface_is_manual_obligation() -> None:
+    m = manifest(interfaces=[iface("I-09", "alpha.api", "gamma.reader", "manual-evidence")])
+    report = evaluate(m, graph(), TODAY)
+    el = _by_id(report, "I-09")
+    assert (el.verdict, el.reason) == ("unknown", "manual-evidence")
+    assert [f.finding_class for f in report.findings] == ["manual-obligation"]
+
+
+def test_project_outside_workspace() -> None:
+    m = manifest(
+        components=[
+            {
+                "id": "delta.ghost",
+                "project": "delta",
+                "kind": "service",
+                "owner": "architects",
+                "responsibility": "ghost",
+            },
+            {
+                "id": "beta.lib",
+                "project": "beta",
+                "kind": "module",
+                "owner": "architects",
+                "responsibility": "lib",
+            },
+        ],
+        interfaces=[iface("I-06", "beta.lib", "delta.ghost", "import")],
+    )
+    report = evaluate(m, graph(), TODAY)
+    el = _by_id(report, "I-06")
+    assert (el.verdict, el.reason) == ("unknown", "outside-workspace")
+    assert [f.finding_class for f in report.findings] == ["orphan-component"]
+
+
+def test_scope_matching_nothing_is_orphan() -> None:
+    m = manifest(
+        components=[
+            {
+                "id": "beta.ghost",
+                "project": "beta",
+                "kind": "module",
+                "owner": "architects",
+                "responsibility": "ghost",
+                "scope": "no/such/dir",
+            },
+            {
+                "id": "gamma.reader",
+                "project": "gamma",
+                "kind": "cli",
+                "owner": "architects",
+                "responsibility": "reader",
+            },
+        ],
+        interfaces=[iface("I-07", "beta.ghost", "gamma.reader", "import")],
+    )
+    paths = {"beta": frozenset({"beta/__init__.py"})}
+    report = evaluate(m, graph(project_paths=paths), TODAY)
+    el = _by_id(report, "I-07")
+    assert (el.verdict, el.reason) == ("unknown", "orphan-component")
+    assert [f.finding_class for f in report.findings] == ["orphan-component"]
+
+
+def test_scope_check_skipped_when_no_paths_known() -> None:
+    # No module/contract facts for beta → cannot falsify the scope → not an orphan.
+    m = manifest(
+        components=[
+            {
+                "id": "beta.ghost",
+                "project": "beta",
+                "kind": "module",
+                "owner": "architects",
+                "responsibility": "ghost",
+                "scope": "no/such/dir",
+            },
+            {
+                "id": "gamma.reader",
+                "project": "gamma",
+                "kind": "cli",
+                "owner": "architects",
+                "responsibility": "reader",
+            },
+        ],
+        interfaces=[iface("I-07", "beta.ghost", "gamma.reader", "import")],
+    )
+    report = evaluate(m, graph(dep("gamma", "beta")), TODAY)
+    assert _by_id(report, "I-07").verdict == "conformant"
