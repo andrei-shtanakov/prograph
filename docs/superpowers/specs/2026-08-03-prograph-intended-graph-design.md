@@ -76,22 +76,27 @@ Every intended element resolves to exactly one of:
   detector, a component whose project is outside the workspace/allowlist, or
   an unresolvable component.
 
-The absence of an observed edge is **not** a violation
-(`missing-required-edge` is its own finding class): dynamic wiring, generated
-code and not-yet-written code are indistinguishable to the indexer. Whether
-`missing` or `unknown` *block* is a lifecycle-stage policy expressed as CLI
-flags (`--fail-on`), never baked into the verdict — the same finding is
-expected during authoring and blocking before release.
+The absence of an observed edge is **not** a violation — dynamic wiring,
+generated code and not-yet-written code are indistinguishable to the indexer,
+and that indistinguishability is precisely the definition of `unknown`. So the
+verdict set stays closed: an interface whose expected edge is absent carries
+verdict **`unknown`**, and the `missing-required-edge` finding class preserves
+the actionable detail ("the detector was applicable and observed absence") on
+top of it. Verdicts attach to intended elements; findings are report entries —
+two layers, one closed verdict set. Whether a finding class *blocks* is a
+lifecycle-stage policy expressed as CLI flags (`--fail-on`), never baked into
+the verdict — the same finding is expected during authoring and blocking
+before release.
 
 ### D5. Finding taxonomy v1
 
-| Finding | Verdict | Trigger |
+| Finding | Element verdict | Trigger |
 |---|---|---|
-| `missing-required-edge` | (policy) | an interface with an observable detector has no matching observed edge |
+| `missing-required-edge` | unknown | an interface with an observable detector has no matching observed edge |
 | `forbidden-edge` | violation | a constraint's forbidden pattern matched an observed edge |
-| `undeclared-edge` | (policy) | an observed edge between two *modelled* components appears in no interface |
+| `undeclared-edge` | — (attaches to the manifest, policy-gated) | an observed edge between two *modelled* components appears in no interface |
 | `orphan-component` | unknown | `project` not in the workspace, or `scope` matches nothing indexed |
-| `expired-waiver` | violation | `exceptions[].expires` is in the past |
+| `expired-waiver` | violation (on the exception) | `exceptions[].expires` is in the past |
 | `manual-obligation` | unknown | a `manual-evidence` element, restated in every report |
 
 `undeclared-edge` fires only when **both** endpoints belong to modelled
@@ -126,10 +131,16 @@ mechanically — it exists to be reported as `manual-obligation`.
 ### D7. `prograph conformance` — CLI surface
 
 ```
-prograph conformance [--manifest PATH | --project NAME] [--format text|json]
-                     [--fail-on missing,undeclared,unknown]
+prograph conformance [--monorepo/-m PATH] [--manifest PATH | --project NAME]
+                     [--format text|json]
+                     [--fail-on <finding-class>[,<finding-class>...]]
 ```
 
+- `--monorepo/-m` locates the monorepo root, consistent with every existing
+  `prograph` command. `--fail-on` takes the **exact finding-class identifiers
+  from D5** (e.g. `--fail-on missing-required-edge,undeclared-edge,
+  manual-obligation`) — no shorthand vocabulary to keep the CLI contract and
+  the taxonomy one and the same.
 - Resolves the manifest (explicit path, or the named project's
   `[tool.prograph] intended`), validates it against the versioned schema,
   diffs against the current snapshot via the existing edge store.
