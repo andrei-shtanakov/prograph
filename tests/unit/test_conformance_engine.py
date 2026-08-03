@@ -261,7 +261,8 @@ def test_forbidden_project_pair_violation() -> None:
     report = evaluate(m, graph(dep("gamma", "alpha")), TODAY)
     el = _by_id(report, "C-1")
     assert (el.verdict, el.reason) == ("violation", None)
-    assert [f.finding_class for f in report.findings] == ["forbidden-edge"]
+    classes = sorted(f.finding_class for f in report.findings)
+    assert classes == ["forbidden-edge", "undeclared-edge"]
     assert report.findings[0].element == "C-1"
 
 
@@ -297,7 +298,8 @@ def test_component_endpoint_ambiguous_is_unsupported() -> None:
     report = evaluate(m, graph(dep("alpha", "beta")), TODAY)
     el = _by_id(report, "C-5")
     assert (el.verdict, el.reason) == ("unknown", "unsupported-resolution")
-    assert report.findings == ()
+    # Edge is undeclared: alpha->beta between modelled projects but not covered by interface.
+    assert [f.finding_class for f in report.findings] == ["undeclared-edge"]
 
 
 def test_file_endpoint_in_rule_matches_declared_path() -> None:
@@ -413,7 +415,7 @@ def test_expired_exception_is_a_violation_and_stops_suppressing() -> None:
     )
     report = evaluate(m, graph(dep("gamma", "alpha")), TODAY)
     classes = sorted(f.finding_class for f in report.findings)
-    assert classes == ["expired-waiver", "forbidden-edge"]
+    assert classes == ["expired-waiver", "forbidden-edge", "undeclared-edge"]
     assert _by_id(report, "C-1").waived_by is None
     assert report.exceptions[0].status == "expired"
     assert exit_code(report, frozenset(), frozenset()) == 1

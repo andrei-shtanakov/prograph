@@ -357,7 +357,7 @@ def _constraint_result(
     comp_by_id: dict[str, Component],
     project_component_count: dict[str, int],
     observed: ObservedGraph,
-) -> tuple[ElementResult, Finding | None, ObservedEdge | None]:
+) -> tuple[ElementResult, Finding | None]:
     def result(verdict: str, reason: str | None) -> ElementResult:
         return ElementResult(
             id=con.id,
@@ -373,7 +373,7 @@ def _constraint_result(
             con.id,
             "manual-evidence element: verify by review, restated in every report",
         )
-        return result(VERDICT_UNKNOWN, REASON_MANUAL), finding, None
+        return result(VERDICT_UNKNOWN, REASON_MANUAL), finding
 
     rule = parse_rule(con.rule)  # load_manifest already guaranteed this parses
     src = _resolve_side(rule.src, comp_by_id)
@@ -386,36 +386,24 @@ def _constraint_result(
                 reason, finding = gap
                 # re-anchor the finding on the constraint, not the component
                 finding = Finding(finding.finding_class, con.id, finding.detail)
-                return result(VERDICT_UNKNOWN, reason), finding, None
-
-    kind = DETECTOR_TO_KIND[con.detector]
-
-    # Search for matching edges (even if constraint is unevaluable, edges still count as
-    # declared). This must happen before the ambiguity check.
-    matched_edge: ObservedEdge | None = None
-    for e in observed.edges:
-        if e.kind != kind:
-            continue
-        if _side_matches(src, e, from_side=True) and _side_matches(dst, e, from_side=False):
-            matched_edge = e
-            break
+                return result(VERDICT_UNKNOWN, reason), finding
 
     # Plan rule 2: a component endpoint is attributable only when it is the sole
     # modelled component of its project; otherwise project-granularity evidence
     # cannot pin the edge on it — honest unknown until module-level v1.1.
     for side in (src, dst):
         if side.component is not None and project_component_count[side.component.project] > 1:
-            # Even when unevaluable, the matched edge is still "declared" by the constraint.
-            return result(VERDICT_UNKNOWN, REASON_UNSUPPORTED), None, matched_edge
+            return result(VERDICT_UNKNOWN, REASON_UNSUPPORTED), None
 
-    if matched_edge is not None:
-        detail = (
-            f"observed {matched_edge.from_name} -[{matched_edge.kind}]-> "
-            f"{matched_edge.to_name} matches {con.rule!r}"
-        )
-        finding = Finding("forbidden-edge", con.id, detail)
-        return result(VERDICT_VIOLATION, None), finding, matched_edge
-    return result(VERDICT_CONFORMANT, None), None, None
+    kind = DETECTOR_TO_KIND[con.detector]
+    for e in observed.edges:
+        if e.kind != kind:
+            continue
+        if _side_matches(src, e, from_side=True) and _side_matches(dst, e, from_side=False):
+            detail = f"observed {e.from_name} -[{e.kind}]-> {e.to_name} matches {con.rule!r}"
+            finding = Finding("forbidden-edge", con.id, detail)
+            return result(VERDICT_VIOLATION, None), finding
+    return result(VERDICT_CONFORMANT, None), None
 
 
 def evaluate(
@@ -440,14 +428,10 @@ def evaluate(
         project_component_count[comp.project] = project_component_count.get(comp.project, 0) + 1
 
     for con in manifest.constraints:
-        element, finding, matched = _constraint_result(
-            con, comp_by_id, project_component_count, observed
-        )
+        element, finding = _constraint_result(con, comp_by_id, project_component_count, observed)
         elements.append(element)
         if finding is not None:
             findings.append(finding)
-        if matched is not None:
-            covered.add(matched)
 
     # Spec D5 undeclared-edge, bounded by plan rule 4 (project→project kinds only).
     modelled_projects = {c.project for c in manifest.components}

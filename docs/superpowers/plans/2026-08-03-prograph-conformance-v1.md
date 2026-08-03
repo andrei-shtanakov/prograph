@@ -1581,7 +1581,7 @@ def test_expired_exception_is_a_violation_and_stops_suppressing() -> None:
     )
     report = evaluate(m, graph(dep("gamma", "alpha")), TODAY)
     classes = sorted(f.finding_class for f in report.findings)
-    assert classes == ["expired-waiver", "forbidden-edge"]
+    assert classes == ["expired-waiver", "forbidden-edge", "undeclared-edge"]
     assert _by_id(report, "C-1").waived_by is None
     assert report.exceptions[0].status == "expired"
     assert exit_code(report, frozenset(), frozenset()) == 1
