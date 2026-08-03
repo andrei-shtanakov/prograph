@@ -1,6 +1,9 @@
 # Intended Graph v1 + `prograph conformance` — design
 
-> Date: 2026-08-03 · Status: **Draft for owner review**
+> Date: 2026-08-03 · Status: **Owner-reviewed — awaiting PR approval/merge**
+> (review 2026-08-03: D1–D8 acceptable after three refinements, all applied:
+> closed verdict set, `unsupported-resolution` unknown, split
+> `--fail-on`/`--fail-on-verdict` namespaces)
 > Upstream decision: ADR behaviour-architecture-lifecycle (2026-08-02, dev
 > workspace decision record; D3/D4 define the two-plane model this spec
 > implements). Live exemplar: the approved WS-005 governance bundle in steward
@@ -47,7 +50,15 @@ across repos. Therefore:
 - Optional `components[].scope` narrows a component to a path prefix inside
   the project. v1 checks at project granularity with scope used only for
   Declared-edge path matching; module-level precision (M9 module facts) is a
-  v1.1 extension, listed under open questions.
+  v1.1 extension.
+- **Insufficient resolution is an honest `unknown`, never a guess.** An
+  interface or constraint whose endpoints resolve into the *same* project
+  (the WS-005 `panel → collector` case: both live in dispatcher) cannot be
+  judged by project-granularity import edges. Such an element carries verdict
+  `unknown` with reason `unsupported-resolution` — it must not accidentally
+  become conformant, missing or forbidden. This turns the v1 granularity limit
+  into observable debt instead of a false guarantee, and is exactly what the
+  module-level v1.1 extension will retire.
 
 ### D3. Detector vocabulary maps onto existing EdgeKind
 
@@ -72,9 +83,11 @@ Every intended element resolves to exactly one of:
 - **conformant** — the expected edge/absence is observed;
 - **violation** — a forbidden pattern matched an observed edge, or a waiver
   expired;
-- **unknown** — the element cannot be machine-observed: `manual-evidence`
-  detector, a component whose project is outside the workspace/allowlist, or
-  an unresolvable component.
+- **unknown** — the element cannot be machine-observed. Reasons are
+  machine-readable in the report: `manual-evidence` (detector never observes),
+  `unsupported-resolution` (endpoints need finer granularity than v1 checks —
+  D2), `outside-workspace` (component's project not in the allowlist),
+  `orphan-component` (component resolves to nothing indexed).
 
 The absence of an observed edge is **not** a violation — dynamic wiring,
 generated code and not-yet-written code are indistinguishable to the indexer,
@@ -108,9 +121,13 @@ set). The WS-005 pilot resolved the ADR's open question 11 with evidence: the
 repo-local plane already owns pinned-copy freshness — copy-integrity as a PR
 gate plus upstream-drift as scheduled observation (the two-guarantees rule,
 dispatcher #99/#107/#110). A third implementation inside prograph would
-duplicate an owner-ruled mechanism. prograph's contract coverage in v1 is
-`missing-required-edge` on `contract`-detector interfaces; hash-level drift
-stays where it lives.
+duplicate an owner-ruled mechanism. The ownership split, stated plainly:
+
+> **contract interface presence → prograph.**
+> **vendored-copy identity/freshness → owner/consumer contract checks.**
+
+prograph's contract coverage in v1 is `missing-required-edge` on
+`contract`-detector interfaces; hash-level drift stays where it lives.
 
 ### D6. Constraint rules v1: edge-shaped only
 
@@ -141,6 +158,10 @@ prograph conformance [--monorepo/-m PATH] [--manifest PATH | --project NAME]
   from D5** (e.g. `--fail-on missing-required-edge,undeclared-edge,
   manual-obligation`) — no shorthand vocabulary to keep the CLI contract and
   the taxonomy one and the same.
+- Escalating by *verdict* is a separate, explicitly named policy:
+  `--fail-on-verdict unknown` turns every unknown into exit 1 regardless of
+  finding class (release-stage posture). Findings and verdicts are different
+  axes; the CLI never mixes their namespaces in one flag.
 - Resolves the manifest (explicit path, or the named project's
   `[tool.prograph] intended`), validates it against the versioned schema,
   diffs against the current snapshot via the existing edge store.
@@ -215,17 +236,20 @@ exceptions:
 - No C4/Structurizr import-export until a real manifest outgrows this schema
   (ADR open question 5; the WS-005 exemplar fits with room to spare).
 
-## Open questions for the owner
+## Resolved questions (owner review, 2026-08-03)
 
-1. Default manifest path: `spec/intended-graph.yaml` (proposed) vs
-   `.prograph/`-adjacent. The proposal keeps authored governance data with the
-   other spec artifacts.
-2. `undeclared-edge` default policy: report-only (proposed) or fail by
-   default? Proposed report-only until one real system has run conformance in
-   CI for a while.
-3. v1.1 candidates, ranked: module-level component resolution (M9 facts),
-   `--since` snapshot comparisons, layering sugar. Anything to promote into
-   v1?
+1. **Default manifest path: `spec/intended-graph.yaml` — accepted.** Authored
+   governance data; `.prograph/` is conceptually wrong for it. Override via
+   `[tool.prograph] intended` stays.
+2. **`undeclared-edge`: report-only by default — accepted.** Endpoints limited
+   to modelled components; collect a baseline on WS-005 first, decide about a
+   mandatory gate after — otherwise the first rollout breeds noise and waiver
+   culture.
+3. **Nothing promoted from v1.1.** Module-level resolution, `--since`,
+   layering sugar all stay v1.1 — under the condition (now D2) that v1
+   honestly reports `unknown/unsupported-resolution` wherever it needs
+   module-level precision: the limit is observable debt, not a false
+   guarantee.
 
 ## Rollout
 
