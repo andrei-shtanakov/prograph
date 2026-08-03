@@ -1581,7 +1581,7 @@ def test_expired_exception_is_a_violation_and_stops_suppressing() -> None:
     )
     report = evaluate(m, graph(dep("gamma", "alpha")), TODAY)
     classes = sorted(f.finding_class for f in report.findings)
-    assert classes == ["expired-waiver", "forbidden-edge"]
+    assert classes == ["expired-waiver", "forbidden-edge", "undeclared-edge"]
     assert _by_id(report, "C-1").waived_by is None
     assert report.exceptions[0].status == "expired"
     assert exit_code(report, frozenset(), frozenset()) == 1
@@ -2652,3 +2652,20 @@ plan change is requested there).
   element_type` (JSON key `"type"`) — renamed only at the payload boundary in `report.py`;
   `evaluate(manifest, observed, today)` signature consistent across Tasks 4–6 and CLI;
   `SnapshotInfo.id` verified against the stub.
+
+## Post-final-review amendments (2026-08-03)
+
+- Interface orphan-component findings (from `_component_gap` in `_interface_result`)
+  now re-anchor to the interface id instead of the component id, mirroring the
+  constraint path — a component id can never be an exception target (`manifest.py`
+  restricts targets to interface/constraint ids), so anchoring to the component made
+  the finding permanently unsuppressible even when the exception waived the interface.
+- A **literal** (non-glob) project-name constraint endpoint that matches neither an
+  indexed project nor any modelled component's project now returns
+  `unknown`/`outside-workspace` with an `orphan-component` finding, instead of silently
+  evaluating `conformant` — closing the false-guarantee gap where a typo'd or renamed
+  project name (e.g. `gama` for `gamma`) turned a constraint invisibly green. Glob
+  endpoints (`*`, `?`, `[`) are unchanged: no match still means conformant.
+- `_side_matches` now uses `fnmatch.fnmatchcase` instead of `fnmatch.fnmatch`, so
+  constraint-rule glob matching is deterministic across platforms (POSIX vs
+  case-insensitive Windows).

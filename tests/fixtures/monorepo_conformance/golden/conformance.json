@@ -1,0 +1,174 @@
+{
+  "elements": [
+    {
+      "detector": "import",
+      "id": "I-01",
+      "reason": null,
+      "type": "interface",
+      "verdict": "conformant",
+      "waived_by": null
+    },
+    {
+      "detector": "declared",
+      "id": "I-02",
+      "reason": null,
+      "type": "interface",
+      "verdict": "conformant",
+      "waived_by": null
+    },
+    {
+      "detector": "contract",
+      "id": "I-03",
+      "reason": null,
+      "type": "interface",
+      "verdict": "conformant",
+      "waived_by": null
+    },
+    {
+      "detector": "import",
+      "id": "I-04",
+      "reason": "unsupported-resolution",
+      "type": "interface",
+      "verdict": "unknown",
+      "waived_by": null
+    },
+    {
+      "detector": "mcp",
+      "id": "I-05",
+      "reason": null,
+      "type": "interface",
+      "verdict": "unknown",
+      "waived_by": "EX-01"
+    },
+    {
+      "detector": "import",
+      "id": "I-06",
+      "reason": "outside-workspace",
+      "type": "interface",
+      "verdict": "unknown",
+      "waived_by": null
+    },
+    {
+      "detector": "import",
+      "id": "I-07",
+      "reason": "orphan-component",
+      "type": "interface",
+      "verdict": "unknown",
+      "waived_by": null
+    },
+    {
+      "detector": "import",
+      "id": "ARCH-C1",
+      "reason": null,
+      "type": "constraint",
+      "verdict": "conformant",
+      "waived_by": null
+    },
+    {
+      "detector": "import",
+      "id": "ARCH-C2",
+      "reason": null,
+      "type": "constraint",
+      "verdict": "violation",
+      "waived_by": null
+    },
+    {
+      "detector": "import",
+      "id": "ARCH-C3",
+      "reason": "unsupported-resolution",
+      "type": "constraint",
+      "verdict": "unknown",
+      "waived_by": null
+    },
+    {
+      "detector": "manual-evidence",
+      "id": "ARCH-C4",
+      "reason": "manual-evidence",
+      "type": "constraint",
+      "verdict": "unknown",
+      "waived_by": null
+    }
+  ],
+  "exceptions": [
+    {
+      "expires": "2999-01-01",
+      "id": "EX-01",
+      "status": "active",
+      "target": "I-05"
+    },
+    {
+      "expires": "2020-01-01",
+      "id": "EX-02",
+      "status": "expired",
+      "target": "ARCH-C2"
+    }
+  ],
+  "findings": [
+    {
+      "class": "expired-waiver",
+      "detail": "exception on ARCH-C2 expired 2020-01-01",
+      "element": "EX-02",
+      "suppressed_by": null
+    },
+    {
+      "class": "forbidden-edge",
+      "detail": "observed gamma -[package_dep]-> alpha matches 'forbidden: gamma -> alpha'",
+      "element": "ARCH-C2",
+      "suppressed_by": null
+    },
+    {
+      "class": "manual-obligation",
+      "detail": "manual-evidence element: verify by review, restated in every report",
+      "element": "ARCH-C4",
+      "suppressed_by": null
+    },
+    {
+      "class": "missing-required-edge",
+      "detail": "detector 'mcp' observed no edge for gamma.reader -> alpha.api",
+      "element": "I-05",
+      "suppressed_by": "EX-01"
+    },
+    {
+      "class": "orphan-component",
+      "detail": "project 'delta' is not in the indexed workspace",
+      "element": "I-06",
+      "suppressed_by": null
+    },
+    {
+      "class": "orphan-component",
+      "detail": "scope 'no/such/dir' matches nothing indexed in 'beta'",
+      "element": "I-07",
+      "suppressed_by": null
+    },
+    {
+      "class": "undeclared-edge",
+      "detail": "observed gamma -[package_dep]-> alpha appears in no interface",
+      "element": null,
+      "suppressed_by": null
+    }
+  ],
+  "manifest": {
+    "path": "gamma/spec/intended-graph.yaml",
+    "sha256": "02b997c9e8621e57dda58f8688c7f98d67d381368b4dc53ebe009870eb0701e9"
+  },
+  "schema": "conformance-report/v1",
+  "snapshot": {
+    "id": 1
+  },
+  "summary": {
+    "findings": {
+      "expired-waiver": 1,
+      "forbidden-edge": 1,
+      "manual-obligation": 1,
+      "missing-required-edge": 1,
+      "orphan-component": 2,
+      "undeclared-edge": 1
+    },
+    "verdicts": {
+      "conformant": 4,
+      "unknown": 6,
+      "violation": 1
+    }
+  },
+  "system": "fixture-feed"
+}

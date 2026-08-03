@@ -72,3 +72,26 @@ def read_tracked_projects(prograph_dir: Path) -> list[str] | None:
     if not isinstance(projects, list) or not all(isinstance(p, str) for p in projects):
         raise TrackedConfigError(f"{path}: `projects` must be a list of strings")
     return projects
+
+
+def read_intended_path(pyproject_path: Path) -> str | None:
+    """Return `[tool.prograph] intended` from a project's pyproject.toml, or None.
+
+    Tolerant of a missing file, missing section/key, malformed TOML, or a
+    non-string value — all yield None so callers fall back to the default
+    manifest path (`spec/intended-graph.yaml`, spec D1).
+    """
+    if not pyproject_path.is_file():
+        return None
+    try:
+        data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    tool = data.get("tool")
+    if not isinstance(tool, dict):
+        return None
+    section = tool.get("prograph")
+    if not isinstance(section, dict):
+        return None
+    value = section.get("intended")
+    return value if isinstance(value, str) else None

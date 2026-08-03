@@ -28,7 +28,17 @@ values to fill the column.
   Related noise for any graph tool: repo namespace vs runtime service-id split
   (repo `proctor` vs service `proctor-a`, ADR 2026-07-07) — declared edges should name
   repo paths, not runtime ids.
-- [ ] **Intended graph v1 + `prograph conformance`** — prescriptive plane поверх существующих EdgeKind: authored-манифест `spec/intended-graph.yaml` в целевом репо, трёхзначные вердикты (conformant/violation/unknown), таксономия findings без contract-pin-drift (вопрос закрыт пилотом WS-005 — pin-freshness владеют repo-local две гарантии). Спека принята: `docs/superpowers/specs/2026-08-03-prograph-intended-graph-design.md` (#22, merged; все 3 вопроса владельца решены 2026-08-03). Первый реальный манифест уже существует — `steward@727a28d` `workstreams/WS-005-gate-verdicts/spec/intended-graph.yaml` (rollout-шаг 2 закрыт со стороны steward). Следующий этап — реализация по плану `docs/superpowers/plans/2026-08-03-prograph-conformance-v1.md` (10 задач: loader → engine → CLI → golden fixture → вендоринг WS-005-манифеста как acceptance). Потребитель: steward `GC-ARCH-CONFORMANCE` (@trigger там — "prograph conformance реализован") @owner:andrei @id:intended-graph-v1
+- [x] **Intended graph v1 + `prograph conformance`** — shipped: strict
+  `intended-graph/v1` loader, three-valued verdict engine (honest
+  `unsupported-resolution` per D2), finding taxonomy v1, CLI with byte-stable
+  JSON and 0/1/2 exit codes; WS-005 manifest (steward@727a28d) vendored as
+  acceptance fixture. Spec:
+  `docs/superpowers/specs/2026-08-03-prograph-intended-graph-design.md`; plan:
+  `docs/superpowers/plans/2026-08-03-prograph-conformance-v1.md`. Follow-ups
+  live in the spec's v1.1 list (module-level resolution, `--since`, layering
+  sugar). Consumer: steward `GC-ARCH-CONFORMANCE` (@trigger there is
+  "prograph conformance реализован" — теперь выполнен). @owner:andrei
+  @id:intended-graph-v1
 - [ ] **Graph-vs-registry drift check** @owner:andrei @id:graph-vs-registry-drift-check
   The invariant — "every link in the integration map has a corresponding graph edge, and
   every graph edge is in the map" — is a fleet-agent check, not a prograph feature; it is

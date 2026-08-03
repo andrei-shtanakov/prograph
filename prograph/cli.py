@@ -530,6 +530,137 @@ def drift(
 
 
 @app.command()
+def conformance(
+    monorepo: Path = typer.Option(  # noqa: B008
+        None,
+        "--monorepo",
+        "-m",
+        help="Monorepo root (default: current working directory).",
+        exists=False,
+        file_okay=False,
+        dir_okay=True,
+    ),
+    manifest: Path = typer.Option(  # noqa: B008
+        None,
+        "--manifest",
+        help="Path to an intended-graph/v1 YAML manifest.",
+    ),
+    project: str = typer.Option(
+        None,
+        "--project",
+        help="Tracked project whose manifest to check ([tool.prograph] intended "
+        "or spec/intended-graph.yaml).",
+    ),
+    format_: str = typer.Option("text", "--format", help="Output format: text | json."),
+    fail_on: str = typer.Option(
+        None,
+        "--fail-on",
+        help="Comma-separated finding classes escalated to exit 1 (exact spec D5 identifiers).",
+    ),
+    fail_on_verdict: str = typer.Option(
+        None,
+        "--fail-on-verdict",
+        help="Comma-separated verdicts escalated to exit 1 (e.g. unknown).",
+    ),
+) -> None:
+    """Check an intended-graph manifest against the latest snapshot (exit 0/1/2)."""
+    import hashlib
+
+    from prograph.config import read_intended_path
+    from prograph.conformance.engine import (
+        FINDING_CLASSES,
+        VERDICT_CONFORMANT,
+        VERDICT_UNKNOWN,
+        VERDICT_VIOLATION,
+        evaluate,
+        exit_code,
+        load_observed,
+    )
+    from prograph.conformance.manifest import ManifestError, load_manifest
+    from prograph.conformance.report import render_json, render_text
+
+    def tool_error(message: str) -> None:
+        err_console.print(f"[red]error:[/red] {message}")
+        raise typer.Exit(code=2)
+
+    if format_ not in ("text", "json"):
+        tool_error(f"unknown --format {format_!r} (expected text or json)")
+    if (manifest is None) == (project is None):
+        tool_error("exactly one of --manifest or --project is required")
+
+    fail_on_set = (
+        frozenset(s.strip() for s in fail_on.split(",") if s.strip()) if fail_on else frozenset()
+    )
+    unknown_classes = fail_on_set - set(FINDING_CLASSES)
+    if unknown_classes:
+        tool_error(f"unknown --fail-on classes: {sorted(unknown_classes)}")
+    verdict_set = (
+        frozenset(s.strip() for s in fail_on_verdict.split(",") if s.strip())
+        if fail_on_verdict
+        else frozenset()
+    )
+    unknown_verdicts = verdict_set - {VERDICT_CONFORMANT, VERDICT_VIOLATION, VERDICT_UNKNOWN}
+    if unknown_verdicts:
+        tool_error(f"unknown --fail-on-verdict values: {sorted(unknown_verdicts)}")
+
+    root = _resolve_monorepo(monorepo)
+    paths = PrographPaths(monorepo_root=root)
+    if not paths.db_path.exists():
+        tool_error(f"no snapshot at {paths.db_path} — run `prograph index` first")
+    db = str(paths.db_path)
+
+    if project is not None:
+        pid = _core.project_by_name(db, project)
+        desc = _core.describe_project(db, pid) if pid is not None else None
+        if desc is None:
+            tool_error(f"project {project!r} is not in the latest snapshot")
+            return  # unreachable; narrows Optional for the type checker
+        project_root = root / desc.root_path.removeprefix("./")
+        intended = read_intended_path(project_root / "pyproject.toml")
+        manifest_path = project_root / (intended or "spec/intended-graph.yaml")
+    else:
+        manifest_path = manifest
+
+    try:
+        loaded = load_manifest(manifest_path)
+    except ManifestError as exc:
+        tool_error(str(exc))
+        return  # unreachable
+
+    try:
+        observed = load_observed(db)
+    except _json.JSONDecodeError as exc:
+        tool_error(f"corrupted attrs_json in snapshot {paths.db_path}: {exc}")
+        return  # unreachable
+    if observed is None:
+        tool_error(f"no snapshot data in {paths.db_path}")
+        return  # unreachable
+
+    import datetime as _dt
+
+    report = evaluate(loaded, observed, _dt.date.today())
+
+    raw_snap = _core.latest_snapshot_info(db)
+    snapshot_id = raw_snap.id if raw_snap is not None else 0
+    sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    try:
+        display_path = str(manifest_path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        display_path = str(manifest_path)
+
+    render = render_json if format_ == "json" else render_text
+    sys.stdout.write(
+        render(
+            report,
+            manifest_path=display_path,
+            manifest_sha256=sha256,
+            snapshot_id=snapshot_id,
+        )
+    )
+    raise typer.Exit(code=exit_code(report, fail_on_set, verdict_set))
+
+
+@app.command()
 def serve(
     monorepo: Path = typer.Option(  # noqa: B008
         None,

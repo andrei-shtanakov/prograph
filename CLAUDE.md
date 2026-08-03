@@ -32,6 +32,7 @@ Plans:
 - M11 (drift detection) plan: `docs/superpowers/plans/2026-05-26-prograph-m11-drift-detection.md`
 - M12 (declared file edges) plan: `docs/superpowers/plans/2026-07-10-prograph-declared-edges.md`
 - Tracked-projects allowlist plan: `docs/superpowers/plans/2026-07-10-prograph-tracked-projects.md`
+- Conformance v1 plan: docs/superpowers/plans/2026-08-03-prograph-conformance-v1.md
 
 Open work is tracked in `TODO.md` (team-level items with `@owner:`/`@blocked_by:`/`@trigger:`
 inline tags); per-milestone steps stay in the plan files above.
@@ -70,6 +71,8 @@ uv run prograph index [--monorepo PATH] [--export-md] [--discover] [--json]  # i
 uv run prograph export-md [--monorepo PATH]                      # re-render MD from latest snapshot
 uv run prograph mcp [--monorepo PATH]                            # run MCP stdio server
 uv run prograph serve [--monorepo PATH] [--host 127.0.0.1] [--port 7700]  # browser UI + REST
+uv run prograph conformance [--monorepo PATH] (--manifest PATH | --project NAME) \
+    [--format text|json] [--fail-on <classes>] [--fail-on-verdict <verdicts>]  # exit 0/1/2
 
 cargo test --all-targets                     # Rust tests
 uv run pytest -v                             # Python tests (excludes realmonorepo + bench)
@@ -125,12 +128,15 @@ Two-layer build:
   - `ts_queries/{python,rust,js}_symbols.scm` — module-level queries
   - `migrations/v1.sql..v10.sql` — additive schema chain (v6 = edge_evidence FK repair, v7 = module tables, v8 = cross_project_symbol_refs, v9 = drift_findings, v10 = declared-edge/stale-declaration support)
 - **`prograph` (Python package):**
-  - `cli.py` — `init`, `index`, `status`, `export-md`, `mcp`, `serve`, `drift` (M11/M12), `--version`
+  - `cli.py` — `init`, `index`, `status`, `export-md`, `mcp`, `serve`, `drift` (M11/M12),
+    `conformance`, `--version`
   - `web_app.py` — FastAPI app + REST endpoints; `/api/drifts?project=X[&kind=...]` (M11/M12); `/api/symbol_refs?project=X[&symbol=Y][&direction=...]` (M10); `/api/graph?since=<snap>` (M8)
   - `web_static/` — Static frontend; M12 declared edges render dashed; M11 side panel adds Drift findings section; M10 Inbound/Outbound references sections; XSS-safe DOM helpers
   - `mcp_server.py` — MCP stdio server with **10 tools** (M11 adds `find_drifts`; M10 added `find_symbol_references`)
   - `export/` — Markdown rendering with M12 declared-edge suffixes/stale declarations, M11 Drift findings, M10 Inbound/Outbound references sections
   - `config.py`, `models.py` (incl. `DriftFindingRow`, `SymbolRefRow`, `DiffEdgeRow`, `ModuleRow`, etc.), `paths.py`
+  - `conformance/` — intended-graph/v1 loader (manifest.py), verdict engine (engine.py),
+    byte-stable report (report.py); manifest is read at check time, never stored (spec D8)
 
 ### Frontend DOM safety
 
@@ -186,6 +192,9 @@ The detector then resolves consumer deps against `declared_name` OR any alias. N
 - Type signatures + docstrings — still M9 deferred.
 - HTTP / REST runtime edges. Still M8 deferred.
 - WebSocket live updates, offline asset bundle, Playwright E2E, auth/TLS, mobile/responsive. Still M8 deferred.
+- Module-level constraint attribution, `--since` comparisons, and layering sugar for
+  `intended-graph` — v1.1. Contract-sharing `undeclared-edge` detection — v1 bounds
+  `undeclared-edge` to project→project edge kinds; contract-sharing is deferred.
 
 (See `docs/superpowers/plans/` for individual milestone plans.)
 

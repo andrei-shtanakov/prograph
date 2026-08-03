@@ -1,0 +1,101 @@
+schema: intended-graph/v1
+system: fixture-feed
+components:
+  - id: alpha.api
+    project: alpha
+    kind: service
+    owner: architects
+    responsibility: "serves the feed API"
+  - id: alpha.worker
+    project: alpha
+    kind: module
+    owner: architects
+    responsibility: "background worker (makes alpha ambiguous for constraints)"
+  - id: beta.lib
+    project: beta
+    kind: module
+    owner: architects
+    responsibility: "shared library"
+  - id: beta.contract
+    project: beta
+    kind: contract
+    owner: architects
+    scope: schemas
+    responsibility: "feed schema v1"
+  - id: beta.ghost
+    project: beta
+    kind: module
+    owner: architects
+    scope: no/such/dir
+    responsibility: "scope that matches nothing indexed"
+  - id: gamma.reader
+    project: gamma
+    kind: cli
+    owner: architects
+    responsibility: "reads beta's feed file"
+  - id: delta.ghost
+    project: delta
+    kind: service
+    owner: architects
+    responsibility: "project outside the workspace"
+interfaces:
+  - id: I-01
+    producer: beta.lib
+    consumer: alpha.api
+    protocol: "python package"
+    detector: import
+  - id: I-02
+    producer: "file:beta/data/feed.txt"
+    consumer: gamma.reader
+    protocol: "text file"
+    detector: declared
+  - id: I-03
+    producer: beta.contract
+    consumer: gamma.reader
+    protocol: "json-schema feed-v1"
+    detector: contract
+  - id: I-04
+    producer: alpha.api
+    consumer: alpha.worker
+    protocol: "in-process"
+    detector: import
+  - id: I-05
+    producer: gamma.reader
+    consumer: alpha.api
+    protocol: "mcp"
+    detector: mcp
+  - id: I-06
+    producer: beta.lib
+    consumer: delta.ghost
+    protocol: "python package"
+    detector: import
+  - id: I-07
+    producer: beta.ghost
+    consumer: gamma.reader
+    protocol: "python package"
+    detector: import
+constraints:
+  - id: ARCH-C1
+    rule: "forbidden: gamma -> beta"
+    detector: import
+  - id: ARCH-C2
+    rule: "forbidden: gamma -> alpha"
+    detector: import
+  - id: ARCH-C3
+    rule: "forbidden: alpha.worker -> beta"
+    detector: import
+  - id: ARCH-C4
+    rule: "forbidden: мутировать наблюдаемые данные — только чтение"
+    detector: manual-evidence
+resources: []
+exceptions:
+  - id: EX-01
+    target: I-05
+    reason: "mcp wiring lands next milestone"
+    owner: architects
+    expires: 2999-01-01
+  - id: EX-02
+    target: ARCH-C2
+    reason: "grandfathered dep, to be removed"
+    owner: architects
+    expires: 2020-01-01
