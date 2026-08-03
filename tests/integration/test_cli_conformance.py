@@ -188,3 +188,44 @@ def test_text_format_default(indexed: Path) -> None:
     res = runner.invoke(app, ["conformance", "--monorepo", str(indexed), "--project", "gamma"])
     assert res.exit_code == 1
     assert "fixture-feed" in res.stdout and "ARCH-C2" in res.stdout
+
+
+def test_fail_on_tolerates_trailing_comma(indexed: Path) -> None:
+    """Empty segments from a trailing comma are ignored, not 'unknown classes'."""
+    res = runner.invoke(
+        app,
+        [
+            "conformance",
+            "--monorepo",
+            str(indexed),
+            "--manifest",
+            str(indexed / "green-manifest.yaml"),
+            "--fail-on",
+            "undeclared-edge,",
+        ],
+    )
+    assert res.exit_code == 0, res.stdout
+
+
+def test_corrupted_attrs_json_is_exit_2(tmp_path: Path) -> None:
+    """A snapshot the instrument cannot read is a tool error, never a quiet unknown."""
+    import sqlite3
+
+    dst = tmp_path / "monorepo_conformance"
+    shutil.copytree(FIXTURE, dst, ignore=shutil.ignore_patterns("golden"))
+    assert runner.invoke(app, ["init", "--monorepo", str(dst)]).exit_code == 0
+    assert runner.invoke(app, ["index", "--monorepo", str(dst)]).exit_code == 0
+    db = dst / ".prograph" / "graph.db"
+    conn = sqlite3.connect(db)
+    try:
+        conn.execute("UPDATE edges SET attrs_json = 'not json' WHERE kind = 'declared'")
+        conn.commit()
+    finally:
+        conn.close()
+    res = runner.invoke(
+        app,
+        ["conformance", "--monorepo", str(dst), "--project", "gamma"],
+    )
+    assert res.exit_code == 2
+    combined = (res.stdout or "") + (res.stderr or "")
+    assert "attrs_json" in combined

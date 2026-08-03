@@ -81,10 +81,9 @@ def load_observed(db_path: str) -> ObservedGraph | None:
         path: str | None = None
         mode: str | None = None
         if row.kind == "declared":
-            try:
-                attrs = json.loads(row.attrs_json)
-            except json.JSONDecodeError:
-                attrs = {}
+            # Loud on corruption, like every other attrs_json consumer (models.py):
+            # a snapshot the instrument cannot read is a tool error, not a quiet unknown.
+            attrs = json.loads(row.attrs_json)
             raw_path = attrs.get("path")
             raw_mode = attrs.get("mode")
             path = raw_path if isinstance(raw_path, str) else None

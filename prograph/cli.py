@@ -588,12 +588,16 @@ def conformance(
     if (manifest is None) == (project is None):
         tool_error("exactly one of --manifest or --project is required")
 
-    fail_on_set = frozenset(s.strip() for s in fail_on.split(",")) if fail_on else frozenset()
+    fail_on_set = (
+        frozenset(s.strip() for s in fail_on.split(",") if s.strip()) if fail_on else frozenset()
+    )
     unknown_classes = fail_on_set - set(FINDING_CLASSES)
     if unknown_classes:
         tool_error(f"unknown --fail-on classes: {sorted(unknown_classes)}")
     verdict_set = (
-        frozenset(s.strip() for s in fail_on_verdict.split(",")) if fail_on_verdict else frozenset()
+        frozenset(s.strip() for s in fail_on_verdict.split(",") if s.strip())
+        if fail_on_verdict
+        else frozenset()
     )
     unknown_verdicts = verdict_set - {VERDICT_CONFORMANT, VERDICT_VIOLATION, VERDICT_UNKNOWN}
     if unknown_verdicts:
@@ -623,7 +627,11 @@ def conformance(
         tool_error(str(exc))
         return  # unreachable
 
-    observed = load_observed(db)
+    try:
+        observed = load_observed(db)
+    except _json.JSONDecodeError as exc:
+        tool_error(f"corrupted attrs_json in snapshot {paths.db_path}: {exc}")
+        return  # unreachable
     if observed is None:
         tool_error(f"no snapshot data in {paths.db_path}")
         return  # unreachable
