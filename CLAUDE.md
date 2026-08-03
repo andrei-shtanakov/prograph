@@ -15,6 +15,7 @@ Specs:
 - Full design spec: `docs/superpowers/specs/2026-05-25-prograph-design.md`
 - Declared edges (M12): `docs/superpowers/specs/2026-07-10-prograph-declared-edges-design.md`
 - Tracked-projects allowlist: `docs/superpowers/specs/2026-07-10-prograph-tracked-projects-design.md`
+- Intended graph v1 + conformance (draft): `docs/superpowers/specs/2026-08-03-prograph-intended-graph-design.md`
 
 Plans:
 
