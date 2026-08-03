@@ -1,0 +1,19 @@
+schema: intended-graph/v1
+system: fixture-feed-green
+components:
+  - id: alpha.api
+    project: alpha
+    kind: service
+    owner: architects
+    responsibility: "serves the feed API"
+  - id: beta.lib
+    project: beta
+    kind: module
+    owner: architects
+    responsibility: "shared library"
+interfaces:
+  - id: I-01
+    producer: beta.lib
+    consumer: alpha.api
+    protocol: "python package"
+    detector: import
