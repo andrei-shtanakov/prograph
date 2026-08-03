@@ -6,13 +6,16 @@ import datetime as dt
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from fnmatch import fnmatch
 
 from prograph import _core
 from prograph.conformance.manifest import (
     FILE_PREFIX,
     Component,
+    Constraint,
     IntendedManifest,
     Interface,
+    parse_rule,
 )
 
 # Spec D4: closed verdict set.
@@ -152,6 +155,31 @@ class ConformanceReport:
 @dataclass(frozen=True)
 class _FileEndpoint:
     path: str
+
+
+@dataclass(frozen=True)
+class _RuleSide:
+    kind: str  # "component" | "project" | "file"
+    value: str  # glob pattern or file path (kind != "component")
+    component: Component | None = None
+
+
+def _resolve_side(raw: str, comp_by_id: dict[str, Component]) -> _RuleSide:
+    if raw.startswith(FILE_PREFIX):
+        return _RuleSide(kind="file", value=raw.removeprefix(FILE_PREFIX))
+    comp = comp_by_id.get(raw)
+    if comp is not None:
+        return _RuleSide(kind="component", value=comp.project, component=comp)
+    return _RuleSide(kind="project", value=raw)
+
+
+def _side_matches(side: _RuleSide, edge: ObservedEdge, from_side: bool) -> bool:
+    if side.kind == "file":
+        return edge.kind == "declared" and _path_matches(side.value, edge.path)
+    name = edge.from_name if from_side else edge.to_name
+    if side.kind == "component":
+        return name == side.value
+    return fnmatch(name, side.value)
 
 
 def _path_matches(file_path: str, edge_path: str | None) -> bool:
@@ -324,6 +352,63 @@ def _interface_result(
     return result(VERDICT_UNKNOWN, None), finding, None
 
 
+def _constraint_result(
+    con: Constraint,
+    comp_by_id: dict[str, Component],
+    project_component_count: dict[str, int],
+    observed: ObservedGraph,
+) -> tuple[ElementResult, Finding | None]:
+    def result(verdict: str, reason: str | None) -> ElementResult:
+        return ElementResult(
+            id=con.id,
+            element_type="constraint",
+            detector=con.detector,
+            verdict=verdict,
+            reason=reason,
+        )
+
+    if con.detector == "manual-evidence":
+        finding = Finding(
+            "manual-obligation",
+            con.id,
+            "manual-evidence element: verify by review, restated in every report",
+        )
+        return result(VERDICT_UNKNOWN, REASON_MANUAL), finding
+
+    rule = parse_rule(con.rule)  # load_manifest already guaranteed this parses
+    src = _resolve_side(rule.src, comp_by_id)
+    dst = _resolve_side(rule.dst, comp_by_id)
+
+    for side in (src, dst):
+        if side.component is not None:
+            gap = _component_gap(side.component, observed)
+            if gap is not None:
+                reason, finding = gap
+                # re-anchor the finding on the constraint, not the component
+                finding = Finding(finding.finding_class, con.id, finding.detail)
+                return result(VERDICT_UNKNOWN, reason), finding
+
+    # Plan rule 2: a component endpoint is attributable only when it is the sole
+    # modelled component of its project; otherwise project-granularity evidence
+    # cannot pin the edge on it — honest unknown until module-level v1.1.
+    for side in (src, dst):
+        if side.component is not None and project_component_count[side.component.project] > 1:
+            return result(VERDICT_UNKNOWN, REASON_UNSUPPORTED), None
+
+    kind = DETECTOR_TO_KIND[con.detector]
+    for e in observed.edges:
+        if e.kind != kind:
+            continue
+        if _side_matches(src, e, from_side=True) and _side_matches(dst, e, from_side=False):
+            finding = Finding(
+                "forbidden-edge",
+                con.id,
+                f"observed {e.from_name} -[{e.kind}]-> {e.to_name} matches {con.rule!r}",
+            )
+            return result(VERDICT_VIOLATION, None), finding
+    return result(VERDICT_CONFORMANT, None), None
+
+
 def evaluate(
     manifest: IntendedManifest, observed: ObservedGraph, today: dt.date
 ) -> ConformanceReport:
@@ -341,7 +426,17 @@ def evaluate(
         if matched is not None:
             covered.add(matched)
 
-    # Constraints (Task 5), undeclared-edge + exceptions (Task 6) extend this function.
+    project_component_count: dict[str, int] = {}
+    for comp in manifest.components:
+        project_component_count[comp.project] = project_component_count.get(comp.project, 0) + 1
+
+    for con in manifest.constraints:
+        element, finding = _constraint_result(con, comp_by_id, project_component_count, observed)
+        elements.append(element)
+        if finding is not None:
+            findings.append(finding)
+
+    # Undeclared-edge + exceptions (Task 6) extend this function.
 
     findings.sort(key=lambda f: (f.finding_class, f.element or "", f.detail))
     return ConformanceReport(

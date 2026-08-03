@@ -250,3 +250,92 @@ def test_scope_check_skipped_when_no_paths_known() -> None:
     )
     report = evaluate(m, graph(dep("gamma", "beta")), TODAY)
     assert _by_id(report, "I-07").verdict == "conformant"
+
+
+def constraint(id_: str, rule: str, detector: str) -> dict[str, str]:
+    return {"id": id_, "rule": rule, "detector": detector}
+
+
+def test_forbidden_project_pair_violation() -> None:
+    m = manifest(constraints=[constraint("C-1", "forbidden: gamma -> alpha", "import")])
+    report = evaluate(m, graph(dep("gamma", "alpha")), TODAY)
+    el = _by_id(report, "C-1")
+    assert (el.verdict, el.reason) == ("violation", None)
+    assert [f.finding_class for f in report.findings] == ["forbidden-edge"]
+    assert report.findings[0].element == "C-1"
+
+
+def test_forbidden_project_pair_conformant_when_absent() -> None:
+    m = manifest(constraints=[constraint("C-1", "forbidden: gamma -> alpha", "import")])
+    report = evaluate(m, graph(dep("alpha", "beta")), TODAY)
+    assert _by_id(report, "C-1").verdict == "conformant"
+
+
+def test_forbidden_glob_endpoint() -> None:
+    m = manifest(constraints=[constraint("C-2", "forbidden: gamma -> *", "import")])
+    report = evaluate(m, graph(dep("gamma", "beta")), TODAY)
+    assert _by_id(report, "C-2").verdict == "violation"
+
+
+def test_forbidden_kind_filter_respected() -> None:
+    # The dep edge exists but the constraint watches mcp edges only.
+    m = manifest(constraints=[constraint("C-3", "forbidden: gamma -> alpha", "mcp")])
+    report = evaluate(m, graph(dep("gamma", "alpha")), TODAY)
+    assert _by_id(report, "C-3").verdict == "conformant"
+
+
+def test_component_endpoint_sole_in_project_is_attributable() -> None:
+    # gamma.reader is gamma's only modelled component → project granularity is exact.
+    m = manifest(constraints=[constraint("C-4", "forbidden: gamma.reader -> beta", "import")])
+    report = evaluate(m, graph(dep("gamma", "beta")), TODAY)
+    assert _by_id(report, "C-4").verdict == "violation"
+
+
+def test_component_endpoint_ambiguous_is_unsupported() -> None:
+    # alpha hosts alpha.api AND alpha.worker → attribution needs module-level (v1.1).
+    m = manifest(constraints=[constraint("C-5", "forbidden: alpha.worker -> beta", "import")])
+    report = evaluate(m, graph(dep("alpha", "beta")), TODAY)
+    el = _by_id(report, "C-5")
+    assert (el.verdict, el.reason) == ("unknown", "unsupported-resolution")
+    assert report.findings == ()
+
+
+def test_file_endpoint_in_rule_matches_declared_path() -> None:
+    m = manifest(
+        constraints=[
+            constraint("C-6", "forbidden: gamma.reader -> file:beta/secret.db", "declared")
+        ]
+    )
+    hit = graph(declared("gamma", "beta", "beta/secret.db", "read"))
+    miss = graph(declared("gamma", "beta", "beta/other.db", "read"))
+    assert _by_id(evaluate(m, hit, TODAY), "C-6").verdict == "violation"
+    assert _by_id(evaluate(m, miss, TODAY), "C-6").verdict == "conformant"
+
+
+def test_manual_evidence_constraint_is_permanent_unknown() -> None:
+    m = manifest(
+        constraints=[constraint("C-7", "forbidden: только чтение, без мутаций", "manual-evidence")]
+    )
+    report = evaluate(m, graph(), TODAY)
+    el = _by_id(report, "C-7")
+    assert (el.verdict, el.reason) == ("unknown", "manual-evidence")
+    assert [f.finding_class for f in report.findings] == ["manual-obligation"]
+
+
+def test_constraint_component_outside_workspace() -> None:
+    m = manifest(
+        components=[
+            {
+                "id": "delta.ghost",
+                "project": "delta",
+                "kind": "service",
+                "owner": "architects",
+                "responsibility": "ghost",
+            },
+        ],
+        constraints=[constraint("C-8", "forbidden: delta.ghost -> beta", "import")],
+    )
+    report = evaluate(m, graph(), TODAY)
+    el = _by_id(report, "C-8")
+    assert (el.verdict, el.reason) == ("unknown", "outside-workspace")
+    assert [f.finding_class for f in report.findings] == ["orphan-component"]
