@@ -734,13 +734,16 @@ fn detect_git_commit(monorepo_root: &Path) -> Option<String> {
 /// Per-project git provenance at index time (spec D3): the commit is recorded even
 /// when the tree is dirty — the separate dirty flag carries that fact. Both None when
 /// the directory is not inside a git repository (or git is unavailable).
+/// The status check is scoped to the project directory (`-- .`) so that in a shared
+/// repository (workspace members, umbrella roots) changes elsewhere in the repo do
+/// not mark this project dirty.
 fn detect_git_state(root: &Path) -> (Option<String>, Option<bool>) {
     use std::process::Command;
 
     let status_out = match Command::new("git")
         .arg("-C")
         .arg(root)
-        .args(["status", "--porcelain"])
+        .args(["status", "--porcelain", "--", "."])
         .output()
     {
         Ok(o) if o.status.success() => o,
@@ -958,6 +961,48 @@ dependencies = ["my-sdk>=2.0"]
         std::fs::write(dir.path().join("f.txt"), "changed").unwrap();
         let (commit2, dirty2) = detect_git_state(dir.path());
         assert_eq!(commit2, commit); // commit recorded even when dirty — unlike detect_git_commit
+        assert_eq!(dirty2, Some(true));
+    }
+
+    #[test]
+    fn detect_git_state_dirty_is_scoped_to_the_project_dir() {
+        use std::process::Command;
+        let dir = TempDir::new().unwrap();
+        let run = |args: &[&str]| {
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(dir.path())
+                .args([
+                    "-c",
+                    "user.email=t@t",
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "commit.gpgsign=false",
+                ])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{args:?}: {:?}", out);
+        };
+        run(&["init", "-q"]);
+        let proj = dir.path().join("proj");
+        let other = dir.path().join("other");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(proj.join("a.txt"), "a").unwrap();
+        std::fs::write(other.join("b.txt"), "b").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-q", "-m", "init"]);
+
+        // A change elsewhere in the shared repo must NOT dirty this project…
+        std::fs::write(other.join("b.txt"), "changed").unwrap();
+        let (_, dirty) = detect_git_state(&proj);
+        assert_eq!(dirty, Some(false));
+
+        // …while a change inside the project's own subtree must.
+        std::fs::write(proj.join("a.txt"), "changed").unwrap();
+        let (_, dirty2) = detect_git_state(&proj);
         assert_eq!(dirty2, Some(true));
     }
 
