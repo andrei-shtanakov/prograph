@@ -5,14 +5,12 @@ from __future__ import annotations
 import json
 
 from prograph.conformance.engine import FINDING_CLASSES, ConformanceReport
+from prograph.conformance.provenance import ReportProvenance
 
 
 def report_payload(
     report: ConformanceReport,
-    *,
-    manifest_path: str,
-    manifest_sha256: str,
-    snapshot_id: int,
+    provenance: ReportProvenance,
 ) -> dict[str, object]:
     """The JSON-ready dict; every intended element appears, judged or not."""
     verdict_counts = {"conformant": 0, "violation": 0, "unknown": 0}
@@ -24,8 +22,27 @@ def report_payload(
     return {
         "schema": "conformance-report/v1",
         "system": report.system,
-        "manifest": {"path": manifest_path, "sha256": manifest_sha256},
-        "snapshot": {"id": snapshot_id},
+        "generated_at": provenance.generated_at,
+        "manifest": {
+            "project": provenance.manifest_project,
+            "path": provenance.manifest_path,
+            "sha256": provenance.manifest_sha256,
+        },
+        "snapshot": {
+            "id": provenance.snapshot_id,
+            "indexed_at": provenance.snapshot_indexed_at,
+            "content_hash": provenance.snapshot_content_hash,
+            "complete": provenance.complete,
+        },
+        "tool": {
+            "name": provenance.tool_name,
+            "version": provenance.tool_version,
+            "schema": provenance.tool_schema,
+        },
+        "projects": {
+            name: {"commit": commit, "dirty": dirty}
+            for name, (commit, dirty) in provenance.projects.items()
+        },
         "elements": [
             {
                 "id": el.id,
@@ -56,31 +73,22 @@ def report_payload(
 
 def render_json(
     report: ConformanceReport,
-    *,
-    manifest_path: str,
-    manifest_sha256: str,
-    snapshot_id: int,
+    provenance: ReportProvenance,
 ) -> str:
-    payload = report_payload(
-        report,
-        manifest_path=manifest_path,
-        manifest_sha256=manifest_sha256,
-        snapshot_id=snapshot_id,
-    )
+    payload = report_payload(report, provenance)
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
 def render_text(
     report: ConformanceReport,
-    *,
-    manifest_path: str,
-    manifest_sha256: str,
-    snapshot_id: int,
+    provenance: ReportProvenance,
 ) -> str:
     lines: list[str] = [
         f"# Conformance: {report.system}",
-        f"manifest: {manifest_path} (sha256 {manifest_sha256[:12]}…)",
-        f"snapshot: {snapshot_id}",
+        f"manifest: {provenance.manifest_path} (sha256 {provenance.manifest_sha256[:12]}…)"
+        + (f" [project {provenance.manifest_project}]" if provenance.manifest_project else ""),
+        f"snapshot: {provenance.snapshot_id} (indexed {provenance.snapshot_indexed_at})",
+        f"generated: {provenance.generated_at}",
         "",
         "## Elements",
     ]

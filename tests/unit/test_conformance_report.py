@@ -8,6 +8,7 @@ from prograph.conformance.engine import (
     ExceptionStatus,
     Finding,
 )
+from prograph.conformance.provenance import ReportProvenance
 from prograph.conformance.report import render_json, render_text, report_payload
 
 REPORT = ConformanceReport(
@@ -43,21 +44,50 @@ REPORT = ConformanceReport(
     exceptions=(ExceptionStatus(id="EX-01", target="I-05", expires="2999-01-01", status="active"),),
 )
 
-ARGS = {
-    "manifest_path": "gamma/spec/intended-graph.yaml",
-    "manifest_sha256": "ab" * 32,
-    "snapshot_id": 1,
-}
+PROV = ReportProvenance(
+    generated_at="2026-08-03T12:00:00Z",
+    manifest_project="gamma",
+    manifest_path="spec/intended-graph.yaml",
+    manifest_sha256="ab" * 32,
+    snapshot_id=1,
+    snapshot_indexed_at="2026-08-03T00:00:00Z",
+    snapshot_content_hash="prograph-snapshot/v1+sha256:" + "cd" * 32,
+    complete=True,
+    tool_name="prograph",
+    tool_version="0.1.0",
+    tool_schema="intended-graph/v1",
+    projects={"alpha": (None, None), "gamma": ("e" * 40, False)},
+)
+
+
+def test_payload_provenance_block() -> None:
+    p = report_payload(REPORT, PROV)
+    assert p["generated_at"] == "2026-08-03T12:00:00Z"
+    assert p["manifest"] == {
+        "project": "gamma",
+        "path": "spec/intended-graph.yaml",
+        "sha256": "ab" * 32,
+    }
+    assert p["snapshot"] == {
+        "id": 1,
+        "indexed_at": "2026-08-03T00:00:00Z",
+        "content_hash": "prograph-snapshot/v1+sha256:" + "cd" * 32,
+        "complete": True,
+    }
+    assert p["tool"] == {
+        "name": "prograph",
+        "version": "0.1.0",
+        "schema": "intended-graph/v1",
+    }
+    assert p["projects"] == {
+        "alpha": {"commit": None, "dirty": None},
+        "gamma": {"commit": "e" * 40, "dirty": False},
+    }
 
 
 def test_payload_shape() -> None:
-    p = report_payload(REPORT, **ARGS)
+    p = report_payload(REPORT, PROV)
     assert p["schema"] == "conformance-report/v1"
-    assert p["manifest"] == {
-        "path": ARGS["manifest_path"],
-        "sha256": ARGS["manifest_sha256"],
-    }
-    assert p["snapshot"] == {"id": 1}
     summary = p["summary"]
     assert isinstance(summary, dict)
     verdicts = summary["verdicts"]
@@ -78,8 +108,8 @@ def test_payload_shape() -> None:
 
 
 def test_json_is_byte_stable() -> None:
-    a = render_json(REPORT, **ARGS)
-    b = render_json(REPORT, **ARGS)
+    a = render_json(REPORT, PROV)
+    b = render_json(REPORT, PROV)
     assert a == b
     assert a.endswith("\n")
     parsed = json.loads(a)
@@ -88,7 +118,7 @@ def test_json_is_byte_stable() -> None:
 
 
 def test_text_lists_every_element_and_finding() -> None:
-    text = render_text(REPORT, **ARGS)
+    text = render_text(REPORT, PROV)
     for needle in (
         "fixture-feed",
         "I-01",
@@ -100,5 +130,6 @@ def test_text_lists_every_element_and_finding() -> None:
         "EX-01",
         "waived",
         "suppressed",
+        "generated",
     ):
         assert needle in text, f"missing {needle!r} in:\n{text}"

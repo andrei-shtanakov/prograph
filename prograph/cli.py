@@ -577,6 +577,11 @@ def conformance(
         load_observed,
     )
     from prograph.conformance.manifest import ManifestError, load_manifest
+    from prograph.conformance.provenance import (
+        ReportProvenance,
+        _utcnow,
+        format_ts,
+    )
     from prograph.conformance.report import render_json, render_text
 
     def tool_error(message: str) -> None:
@@ -648,15 +653,24 @@ def conformance(
     except ValueError:
         display_path = str(manifest_path)
 
-    render = render_json if format_ == "json" else render_text
-    sys.stdout.write(
-        render(
-            report,
-            manifest_path=display_path,
-            manifest_sha256=sha256,
-            snapshot_id=snapshot_id,
-        )
+    # Task 5 will replace this with build_provenance()
+    prov = ReportProvenance(
+        generated_at=format_ts(_utcnow()),
+        manifest_project=None,
+        manifest_path=display_path,
+        manifest_sha256=sha256,
+        snapshot_id=snapshot_id,
+        snapshot_indexed_at=raw_snap.ts if raw_snap else "",
+        snapshot_content_hash="",
+        complete=True,
+        tool_name="prograph",
+        tool_version=__version__,
+        tool_schema="intended-graph/v1",
+        projects={},
     )
+
+    render = render_json if format_ == "json" else render_text
+    sys.stdout.write(render(report, prov))
     raise typer.Exit(code=exit_code(report, fail_on_set, verdict_set))
 
 
