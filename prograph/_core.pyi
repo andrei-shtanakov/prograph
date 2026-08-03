@@ -39,6 +39,7 @@ def refs_to_symbol(
 def refs_from_project(db_path: str, project_name: str) -> list[SymbolRefRow]: ...
 def drifts_for_project(db_path: str, project_name: str) -> list[DriftFindingRow]: ...
 def find_drifts_filtered(db_path: str, kind: str | None = None) -> list[DriftFindingRow]: ...
+def project_git_states(db_path: str, snapshot_id: int) -> list[ProjectGitStateRow]: ...
 
 class ProjectKind:
     Python: ClassVar[ProjectKind]
@@ -301,3 +302,8 @@ class DriftFindingRow:
     source_line: int
     confidence: str
     detail: str | None
+
+class ProjectGitStateRow:
+    project_name: str
+    git_commit: str | None
+    git_dirty: bool | None

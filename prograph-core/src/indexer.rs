@@ -341,6 +341,36 @@ pub fn index_monorepo(
         }
     }
 
+    // v11: per-project git provenance (spec D3), captured once new_project_ids is
+    // fully populated by the project-diff loop above. alive_projects was already
+    // read before begin_snapshot() (Phase 4), so no extra store call is needed here.
+    let alive_ids: HashMap<String, i64> = alive_projects
+        .iter()
+        .map(|(root, (id, _attrs))| (root.clone(), *id))
+        .collect();
+    for fact in &facts {
+        let Some(project_id) = new_project_ids
+            .get(&fact.project_root)
+            .copied()
+            .or_else(|| alive_ids.get(&fact.project_root).copied())
+        else {
+            continue;
+        };
+        let rel = fact
+            .project_root
+            .strip_prefix("./")
+            .unwrap_or(&fact.project_root);
+        let abs = monorepo_root.join(rel);
+        let (commit, dirty) = detect_git_state(&abs);
+        if dirty == Some(true) {
+            // Machine-readable dirty warning (owner ruling, resolved question 2):
+            // declared.warnings / detection.warnings texts only bump warning_count
+            // and are not persisted anywhere else, so this mirrors that exactly.
+            warning_count += 1;
+        }
+        writer.insert_project_git_state(snap_id, project_id, commit.as_deref(), dirty)?;
+    }
+
     // Contracts persist (BEFORE edges, so contract_link endpoints resolve).
     let mut new_contract_ids: HashMap<String, i64> = HashMap::new();
     for entry in &contract_diff {
@@ -701,6 +731,37 @@ fn detect_git_commit(monorepo_root: &Path) -> Option<String> {
     }
 }
 
+/// Per-project git provenance at index time (spec D3): the commit is recorded even
+/// when the tree is dirty — the separate dirty flag carries that fact. Both None when
+/// the directory is not inside a git repository (or git is unavailable).
+fn detect_git_state(root: &Path) -> (Option<String>, Option<bool>) {
+    use std::process::Command;
+
+    let status_out = match Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["status", "--porcelain"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return (None, None),
+    };
+    let dirty = !status_out.stdout.is_empty();
+
+    let commit = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    (commit, Some(dirty))
+}
+
 fn secs_to_ymdhms(secs: u64) -> (i32, u32, u32, u32, u32, u32) {
     // Civil-from-days algorithm by Howard Hinnant.
     let s = secs as i64;
@@ -856,6 +917,48 @@ dependencies = ["my-sdk>=2.0"]
     fn detect_git_commit_returns_none_for_non_git_dir() {
         let dir = TempDir::new().unwrap();
         assert!(detect_git_commit(dir.path()).is_none());
+    }
+
+    #[test]
+    fn detect_git_state_non_git_dir_is_none_none() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(detect_git_state(dir.path()), (None, None));
+    }
+
+    #[test]
+    fn detect_git_state_clean_and_dirty_repo() {
+        use std::process::Command;
+        let dir = TempDir::new().unwrap();
+        let run = |args: &[&str]| {
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(dir.path())
+                .args([
+                    "-c",
+                    "user.email=t@t",
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "commit.gpgsign=false",
+                ])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{args:?}: {:?}", out);
+        };
+        run(&["init", "-q"]);
+        std::fs::write(dir.path().join("f.txt"), "x").unwrap();
+        run(&["add", "."]);
+        run(&["commit", "-q", "-m", "init"]);
+
+        let (commit, dirty) = detect_git_state(dir.path());
+        assert!(commit.is_some());
+        assert_eq!(dirty, Some(false));
+
+        std::fs::write(dir.path().join("f.txt"), "changed").unwrap();
+        let (commit2, dirty2) = detect_git_state(dir.path());
+        assert_eq!(commit2, commit); // commit recorded even when dirty — unlike detect_git_commit
+        assert_eq!(dirty2, Some(true));
     }
 
     #[test]

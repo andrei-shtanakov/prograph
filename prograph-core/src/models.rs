@@ -624,3 +624,22 @@ impl DriftFindingRow {
         )
     }
 }
+
+/// v11: a project's git provenance as captured at index time (spec D3).
+#[derive(Debug, Clone)]
+#[pyclass(frozen, module = "prograph._core", get_all, skip_from_py_object)]
+pub struct ProjectGitStateRow {
+    pub project_name: String,
+    pub git_commit: Option<String>,
+    pub git_dirty: Option<bool>,
+}
+
+#[pymethods]
+impl ProjectGitStateRow {
+    fn __repr__(&self) -> String {
+        format!(
+            "ProjectGitStateRow({}, commit={:?}, dirty={:?})",
+            self.project_name, self.git_commit, self.git_dirty
+        )
+    }
+}
