@@ -17,6 +17,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (8, include_str!("migrations/v8.sql")),
     (9, include_str!("migrations/v9.sql")),
     (10, include_str!("migrations/v10.sql")),
+    (11, include_str!("migrations/v11.sql")),
 ];
 
 /// Sanitize an identifier (project name or contract declared_id) into a filesystem-safe
@@ -651,6 +652,33 @@ impl Store {
         }
     }
 
+    /// v11: (project_name, git_commit, git_dirty) for a snapshot, sorted by name.
+    #[allow(clippy::type_complexity)]
+    pub fn project_git_states(
+        &self,
+        snapshot_id: i64,
+    ) -> Result<Vec<(String, Option<String>, Option<bool>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT p.name, g.git_commit, g.git_dirty
+             FROM project_git_states g
+             JOIN projects p ON p.id = g.project_id
+             WHERE g.snapshot_id = ?
+             ORDER BY p.name",
+        )?;
+        let rows = stmt.query_map([snapshot_id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<String>>(1)?,
+                r.get::<_, Option<i64>>(2)?.map(|v| v != 0),
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
     /// SnapshotInfo for an arbitrary snapshot id.
     pub fn snapshot_by_id(&self, id: i64) -> Result<Option<crate::models::SnapshotInfo>> {
         let mut stmt = self.conn.prepare(
@@ -1203,6 +1231,28 @@ impl SnapshotWriter<'_> {
         Ok(())
     }
 
+    /// v11: record a project's git state as captured at index time (spec D3).
+    pub fn insert_project_git_state(
+        &self,
+        snapshot_id: i64,
+        project_id: i64,
+        git_commit: Option<&str>,
+        git_dirty: Option<bool>,
+    ) -> Result<()> {
+        self.tx.execute(
+            "INSERT OR REPLACE INTO project_git_states
+             (snapshot_id, project_id, git_commit, git_dirty)
+             VALUES (?, ?, ?, ?)",
+            rusqlite::params![
+                snapshot_id,
+                project_id,
+                git_commit,
+                git_dirty.map(|d| d as i64)
+            ],
+        )?;
+        Ok(())
+    }
+
     // Wide signature mirrors the edges schema; refactoring into a struct would
     // just push the same fields one level deeper without clarity gains.
     #[allow(clippy::too_many_arguments)]
@@ -1611,7 +1661,7 @@ mod tests {
         let path = tmp.path().join(".prograph/graph.db");
 
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
     }
 
     #[test]
@@ -1621,7 +1671,7 @@ mod tests {
 
         let _ = Store::open(&path).unwrap();
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
     }
 
     #[test]
@@ -1656,7 +1706,7 @@ mod tests {
         assert!(names.contains(&"edges".to_string()));
         assert!(names.contains(&"edge_evidence".to_string()));
         assert!(names.contains(&"change_log".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
     }
 
     #[test]
@@ -1749,7 +1799,7 @@ mod tests {
 
         // Now Store::open should apply v2 + v3.
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
     }
 
     #[test]
@@ -1766,7 +1816,7 @@ mod tests {
             .collect();
         assert!(names.contains(&"contracts".to_string()));
         assert!(names.contains(&"contract_files".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
     }
 
     #[test]
@@ -1907,7 +1957,7 @@ mod tests {
 
         // Open via Store — v3 migration runs.
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
 
         let edge_count: i64 = store
             .connection()
@@ -1932,7 +1982,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"mcp_tool_decls".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
     }
 
     #[test]
@@ -2222,7 +2272,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"search_fts".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
     }
 
     #[test]
@@ -2345,7 +2395,7 @@ mod tests {
         assert!(names.contains(&"modules".to_string()));
         assert!(names.contains(&"public_symbols".to_string()));
         assert!(names.contains(&"internal_imports".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
     }
 
     #[test]
@@ -2361,7 +2411,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"cross_project_symbol_refs".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
     }
 
     #[test]
@@ -2377,7 +2427,7 @@ mod tests {
             .map(|r| r.unwrap())
             .collect();
         assert!(names.contains(&"drift_findings".to_string()));
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
     }
 
     #[test]
@@ -2406,11 +2456,11 @@ mod tests {
 
     #[test]
     fn v10_accepts_declared_edge_and_stale_declaration_drift() {
-        // Fresh store runs the full migration chain — schema_version must be 10
-        // and the widened CHECKs must accept the new kind strings.
+        // Fresh store runs the full migration chain — schema_version reflects
+        // the latest migration, and the widened CHECKs must accept the new kind strings.
         let tmp = tempfile::tempdir().unwrap();
         let mut store = Store::open(&tmp.path().join("g.db")).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
 
         let writer = store.begin_snapshot().unwrap();
         let snap = writer.insert_snapshot("ts", "/m", None, "0.1.0").unwrap();
@@ -2526,7 +2576,7 @@ mod tests {
 
         // Open via Store — v10 migration runs (edges + drift_findings rebuilt).
         let store = Store::open(&path).unwrap();
-        assert_eq!(store.schema_version().unwrap(), 10);
+        assert_eq!(store.schema_version().unwrap(), 11);
 
         // Edge count and kinds unchanged.
         let mut edge_kinds: Vec<String> = store
@@ -2596,5 +2646,39 @@ mod tests {
             .expect(
                 "v10 drift_findings CHECK must accept 'stale_declaration' after migrating an existing v9 db",
             );
+    }
+
+    #[test]
+    fn project_git_states_roundtrip_and_null_semantics() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&tmp.path().join("g.db")).unwrap();
+        let writer = store.begin_snapshot().unwrap();
+        let snap = writer
+            .insert_snapshot("2026-08-03T00:00:00Z", "/mono", None, "0.1.0")
+            .unwrap();
+        let pa = writer
+            .insert_project(snap, "alpha", "./alpha", "python", "{}")
+            .unwrap();
+        let pb = writer
+            .insert_project(snap, "beta", "./beta", "python", "{}")
+            .unwrap();
+        writer
+            .insert_project_git_state(snap, pa, Some("abc123"), Some(false))
+            .unwrap();
+        writer
+            .insert_project_git_state(snap, pb, None, None)
+            .unwrap();
+        writer.commit().unwrap();
+
+        let rows = store.project_git_states(snap).unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                ("alpha".to_string(), Some("abc123".to_string()), Some(false)),
+                ("beta".to_string(), None, None),
+            ]
+        );
+        // Unknown snapshot id -> empty, not an error.
+        assert!(store.project_git_states(snap + 99).unwrap().is_empty());
     }
 }

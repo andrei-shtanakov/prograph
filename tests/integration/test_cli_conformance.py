@@ -1,8 +1,10 @@
 """prograph conformance: end-to-end over the monorepo_conformance fixture."""
 
+import datetime as dt
 import json
 import os
 import shutil
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,9 @@ runner = CliRunner()
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "monorepo_conformance"
 GOLDEN = FIXTURE / "golden" / "conformance.json"
 
+FIXED_INDEXED_AT = "2026-08-03T00:00:00Z"
+FIXED_NOW = dt.datetime(2026, 8, 3, 12, 0, 0, tzinfo=dt.UTC)
+
 
 @pytest.fixture(scope="module")
 def indexed(tmp_path_factory: pytest.TempPathFactory) -> Path:
@@ -21,6 +26,12 @@ def indexed(tmp_path_factory: pytest.TempPathFactory) -> Path:
     shutil.copytree(FIXTURE, dst, ignore=shutil.ignore_patterns("golden"))
     assert runner.invoke(app, ["init", "--monorepo", str(dst)]).exit_code == 0
     assert runner.invoke(app, ["index", "--monorepo", str(dst)]).exit_code == 0
+    conn = sqlite3.connect(dst / ".prograph" / "graph.db")
+    try:
+        conn.execute("UPDATE snapshots SET ts = ?", (FIXED_INDEXED_AT,))
+        conn.commit()
+    finally:
+        conn.close()
     return dst
 
 
@@ -85,7 +96,8 @@ def test_all_six_finding_classes_reachable(indexed: Path) -> None:
     }
 
 
-def test_json_matches_golden(indexed: Path) -> None:
+def test_json_matches_golden(indexed: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("prograph.conformance.provenance._utcnow", lambda: FIXED_NOW)
     res = runner.invoke(
         app,
         ["conformance", "--monorepo", str(indexed), "--project", "gamma", "--format", "json"],
@@ -94,6 +106,22 @@ def test_json_matches_golden(indexed: Path) -> None:
         GOLDEN.parent.mkdir(parents=True, exist_ok=True)
         GOLDEN.write_text(res.stdout, encoding="utf-8")
     assert res.stdout == GOLDEN.read_text(encoding="utf-8")
+
+
+def test_provenance_block_present(indexed: Path) -> None:
+    _, payload = _json_run(indexed)
+    assert payload["manifest"]["project"] == "gamma"
+    assert payload["manifest"]["path"] == "spec/intended-graph.yaml"
+    assert payload["snapshot"]["indexed_at"] == FIXED_INDEXED_AT
+    assert payload["snapshot"]["complete"] is True
+    assert payload["snapshot"]["content_hash"].startswith("prograph-snapshot/v1+sha256:")
+    assert payload["tool"] == {
+        "name": "prograph",
+        "version": "0.1.0",
+        "schema": "intended-graph/v1",
+    }
+    assert set(payload["projects"]) == {"alpha", "beta", "delta", "gamma"}
+    assert payload["projects"]["gamma"] == {"commit": None, "dirty": None}
 
 
 def test_green_manifest_exits_0(indexed: Path) -> None:

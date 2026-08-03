@@ -564,8 +564,6 @@ def conformance(
     ),
 ) -> None:
     """Check an intended-graph manifest against the latest snapshot (exit 0/1/2)."""
-    import hashlib
-
     from prograph.config import read_intended_path
     from prograph.conformance.engine import (
         FINDING_CLASSES,
@@ -638,25 +636,22 @@ def conformance(
 
     import datetime as _dt
 
+    from prograph.conformance.provenance import build_provenance
+
     report = evaluate(loaded, observed, _dt.date.today())
 
-    raw_snap = _core.latest_snapshot_info(db)
-    snapshot_id = raw_snap.id if raw_snap is not None else 0
-    sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    manifest_projects = sorted({c.project for c in loaded.components})
     try:
-        display_path = str(manifest_path.resolve().relative_to(root.resolve()))
-    except ValueError:
-        display_path = str(manifest_path)
+        prov = build_provenance(db, root, manifest_path, manifest_projects)
+    except _json.JSONDecodeError as exc:
+        tool_error(f"corrupted attrs_json in snapshot {paths.db_path}: {exc}")
+        return  # unreachable
+    except ValueError as exc:
+        tool_error(str(exc))
+        return  # unreachable
 
     render = render_json if format_ == "json" else render_text
-    sys.stdout.write(
-        render(
-            report,
-            manifest_path=display_path,
-            manifest_sha256=sha256,
-            snapshot_id=snapshot_id,
-        )
-    )
+    sys.stdout.write(render(report, prov))
     raise typer.Exit(code=exit_code(report, fail_on_set, verdict_set))
 
 

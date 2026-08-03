@@ -1,6 +1,6 @@
 # Conformance report as versioned evidence — provenance + published schemas
 
-> Date: 2026-08-03 · Status: **Revised after owner review (2026-08-03) — awaiting approval**
+> Date: 2026-08-03 · Status: **Approved (#25) — implemented (this branch)**
 > (review verdict: pattern confirmed; two mandatory fixes applied — report/snapshot time
 > split, JSON-Schema-vs-loader boundary — plus the minor clarifications; all three open
 > questions resolved by the owner, see «Resolved questions»)

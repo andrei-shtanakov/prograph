@@ -19,8 +19,9 @@ pub use models::{
     ChangeEvent, ChangeKind, Contract, ContractDescription, ContractFileRow, ContractOwner,
     ContractSummary, DiffEdgeRow, DriftFindingRow, Edge, EdgeEvidenceRow, EdgeKind, EdgeRow,
     EntityKind, InboundEdge, IndexSummary, InternalImportRow, McpToolDeclRow, ModuleRow,
-    MonorepoOverview, NodeKind, OutboundEdge, ProjectCandidate, ProjectDescription, ProjectKind,
-    ProjectSummary, PublicSymbolRow, RecentChangeRow, SearchHit, SnapshotInfo, SymbolRefRow,
+    MonorepoOverview, NodeKind, OutboundEdge, ProjectCandidate, ProjectDescription,
+    ProjectGitStateRow, ProjectKind, ProjectSummary, PublicSymbolRow, RecentChangeRow, SearchHit,
+    SnapshotInfo, SymbolRefRow,
 };
 pub use store::Store;
 
@@ -181,6 +182,21 @@ fn py_find_drifts_filtered(db_path: &str, kind: Option<&str>) -> PyResult<Vec<Dr
     Ok(store.find_drifts_filtered(kind)?)
 }
 
+#[pyfunction]
+#[pyo3(name = "project_git_states")]
+fn py_project_git_states(db_path: &str, snapshot_id: i64) -> PyResult<Vec<ProjectGitStateRow>> {
+    let store = Store::open(std::path::Path::new(db_path))?;
+    Ok(store
+        .project_git_states(snapshot_id)?
+        .into_iter()
+        .map(|(project_name, git_commit, git_dirty)| ProjectGitStateRow {
+            project_name,
+            git_commit,
+            git_dirty,
+        })
+        .collect())
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
@@ -203,6 +219,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_refs_from_project, m)?)?;
     m.add_function(wrap_pyfunction!(py_drifts_for_project, m)?)?;
     m.add_function(wrap_pyfunction!(py_find_drifts_filtered, m)?)?;
+    m.add_function(wrap_pyfunction!(py_project_git_states, m)?)?;
     m.add_class::<ProjectKind>()?;
     m.add_class::<ProjectCandidate>()?;
     m.add_class::<NodeKind>()?;
@@ -234,5 +251,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<InternalImportRow>()?;
     m.add_class::<SymbolRefRow>()?;
     m.add_class::<DriftFindingRow>()?;
+    m.add_class::<ProjectGitStateRow>()?;
     Ok(())
 }
