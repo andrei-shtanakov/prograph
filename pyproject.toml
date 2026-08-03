@@ -41,6 +41,7 @@ dev = [
     "pyrefly>=0.6",
     "maturin>=1.7,<2",
     "types-pyyaml>=6.0.12.20260724",
+    "jsonschema>=4.26.0",
 ]
 
 [tool.maturin]
