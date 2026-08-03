@@ -1,0 +1,3 @@
+source: steward@727a28d workstreams/WS-005-gate-verdicts/spec/intended-graph.yaml
+vendored: 2026-08-03
+purpose: loader acceptance fixture for the first real intended-graph/v1 manifest

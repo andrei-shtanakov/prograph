@@ -182,3 +182,21 @@ def test_read_intended_path_malformed(tmp_path: Path) -> None:
     py = tmp_path / "pyproject.toml"
     py.write_text("not [ toml", encoding="utf-8")
     assert read_intended_path(py) is None
+
+
+WS005 = Path(__file__).resolve().parent.parent / "fixtures" / "ws005_manifest"
+
+
+def test_ws005_real_manifest_loads() -> None:
+    """The first real manifest (steward@727a28d) must pass the strict loader as-is."""
+    m = load_manifest(WS005 / "intended-graph.yaml")
+    assert m.system == "ws005-governance-panel"
+    assert len(m.components) == 6
+    assert [i.id for i in m.interfaces] == ["I-01", "I-02", "I-03", "I-04"]
+    assert [c.id for c in m.constraints] == ["ARCH-C1", "ARCH-C2", "ARCH-C3", "ARCH-C4"]
+    assert m.exceptions == []
+    # Mechanical rules parse; manual-evidence prose is not parsed.
+    parsed = parse_rule(m.constraints[0].rule)
+    assert parsed == ForbiddenRule(src="dispatcher", dst="steward")
+    arch_c4 = parse_rule(m.constraints[3].rule)
+    assert arch_c4.dst == "file:.steward/gate_verdicts.jsonl"
