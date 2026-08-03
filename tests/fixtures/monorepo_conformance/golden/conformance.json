@@ -130,14 +130,14 @@
     },
     {
       "class": "orphan-component",
-      "detail": "scope 'no/such/dir' matches nothing indexed in 'beta'",
-      "element": "beta.ghost",
+      "detail": "project 'delta' is not in the indexed workspace",
+      "element": "I-06",
       "suppressed_by": null
     },
     {
       "class": "orphan-component",
-      "detail": "project 'delta' is not in the indexed workspace",
-      "element": "delta.ghost",
+      "detail": "scope 'no/such/dir' matches nothing indexed in 'beta'",
+      "element": "I-07",
       "suppressed_by": null
     },
     {

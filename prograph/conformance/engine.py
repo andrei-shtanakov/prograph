@@ -6,7 +6,7 @@ import datetime as dt
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from fnmatch import fnmatch
+from fnmatch import fnmatchcase
 
 from prograph import _core
 from prograph.conformance.manifest import (
@@ -179,7 +179,12 @@ def _side_matches(side: _RuleSide, edge: ObservedEdge, from_side: bool) -> bool:
     name = edge.from_name if from_side else edge.to_name
     if side.kind == "component":
         return name == side.value
-    return fnmatch(name, side.value)
+    return fnmatchcase(name, side.value)
+
+
+def _is_glob_pattern(name: str) -> bool:
+    """Spec D6: a project endpoint with glob metacharacters is a pattern, not a name."""
+    return any(ch in name for ch in "*?[")
 
 
 def _path_matches(file_path: str, edge_path: str | None) -> bool:
@@ -332,6 +337,10 @@ def _interface_result(
             gap = _component_gap(endpoint, observed)
             if gap is not None:
                 reason, finding = gap
+                # re-anchor the finding on the interface, not the component, so an
+                # exception targeting the interface can suppress it (mirrors the
+                # constraint path below).
+                finding = Finding(finding.finding_class, iface.id, finding.detail)
                 return result(VERDICT_UNKNOWN, reason), finding, None
 
     if (
@@ -387,6 +396,24 @@ def _constraint_result(
                 # re-anchor the finding on the constraint, not the component
                 finding = Finding(finding.finding_class, con.id, finding.detail)
                 return result(VERDICT_UNKNOWN, reason), finding
+
+    # A literal (non-glob) project-name endpoint that names neither an indexed
+    # project nor any modelled component's project is a typo/rename, not a green
+    # light — same honest-unknown treatment as a component outside the workspace.
+    # Glob endpoints keep the existing "no match => conformant" semantics.
+    for side in (src, dst):
+        if (
+            side.kind == "project"
+            and not _is_glob_pattern(side.value)
+            and side.value not in observed.projects
+            and side.value not in project_component_count
+        ):
+            finding = Finding(
+                "orphan-component",
+                con.id,
+                f"project {side.value!r} is not in the indexed workspace",
+            )
+            return result(VERDICT_UNKNOWN, REASON_OUTSIDE), finding
 
     # Plan rule 2: a component endpoint is attributable only when it is the sole
     # modelled component of its project; otherwise project-granularity evidence

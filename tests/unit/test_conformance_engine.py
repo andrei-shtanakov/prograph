@@ -252,6 +252,46 @@ def test_scope_check_skipped_when_no_paths_known() -> None:
     assert _by_id(report, "I-07").verdict == "conformant"
 
 
+def test_interface_orphan_finding_is_waivable_via_interface_exception() -> None:
+    # delta.ghost is outside the workspace; the exception targets the *interface*
+    # I-06 (a component id can never be an exception target — manifest.py forbids
+    # it), so the orphan-component finding must anchor to I-06 to be suppressible.
+    m = manifest(
+        components=[
+            {
+                "id": "delta.ghost",
+                "project": "delta",
+                "kind": "service",
+                "owner": "architects",
+                "responsibility": "ghost",
+            },
+            {
+                "id": "beta.lib",
+                "project": "beta",
+                "kind": "module",
+                "owner": "architects",
+                "responsibility": "lib",
+            },
+        ],
+        interfaces=[iface("I-06", "beta.lib", "delta.ghost", "import")],
+        exceptions=[
+            {
+                "id": "EX-9",
+                "target": "I-06",
+                "reason": "pending workspace onboarding",
+                "owner": "architects",
+                "expires": "2999-01-01",
+            }
+        ],
+    )
+    report = evaluate(m, graph(), TODAY)
+    finding = next(f for f in report.findings if f.finding_class == "orphan-component")
+    assert finding.element == "I-06"
+    assert finding.suppressed_by == "EX-9"
+    assert _by_id(report, "I-06").waived_by == "EX-9"
+    assert exit_code(report, frozenset({"orphan-component"}), frozenset()) == 0
+
+
 def constraint(id_: str, rule: str, detector: str) -> dict[str, str]:
     return {"id": id_, "rule": rule, "detector": detector}
 
@@ -276,6 +316,28 @@ def test_forbidden_glob_endpoint() -> None:
     m = manifest(constraints=[constraint("C-2", "forbidden: gamma -> *", "import")])
     report = evaluate(m, graph(dep("gamma", "beta")), TODAY)
     assert _by_id(report, "C-2").verdict == "violation"
+
+
+def test_literal_typo_project_endpoint_is_outside_workspace_not_conformant() -> None:
+    # "gama" (typo for "gamma") matches no indexed project and no modelled
+    # component's project; a bare project-name endpoint must not silently read
+    # as conformant just because it happens to be spelled wrong.
+    m = manifest(constraints=[constraint("C-9", "forbidden: gama -> beta", "import")])
+    report = evaluate(m, graph(dep("gamma", "beta")), TODAY)
+    el = _by_id(report, "C-9")
+    assert (el.verdict, el.reason) == ("unknown", "outside-workspace")
+    finding = next(f for f in report.findings if f.finding_class == "orphan-component")
+    assert finding.element == "C-9"
+    assert "gama" in finding.detail
+
+
+def test_glob_project_endpoint_with_no_matches_stays_conformant() -> None:
+    # Glob patterns keep the existing "no match => conformant" semantics; only
+    # literal endpoints get the honest-unknown treatment above.
+    m = manifest(constraints=[constraint("C-10", "forbidden: gam* -> beta", "import")])
+    report = evaluate(m, graph(), TODAY)
+    assert _by_id(report, "C-10").verdict == "conformant"
+    assert report.findings == ()
 
 
 def test_forbidden_kind_filter_respected() -> None:
