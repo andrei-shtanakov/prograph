@@ -33,6 +33,7 @@ Plans:
 - M12 (declared file edges) plan: `docs/superpowers/plans/2026-07-10-prograph-declared-edges.md`
 - Tracked-projects allowlist plan: `docs/superpowers/plans/2026-07-10-prograph-tracked-projects.md`
 - Conformance v1 plan: docs/superpowers/plans/2026-08-03-prograph-conformance-v1.md
+- Report provenance plan: docs/superpowers/plans/2026-08-03-conformance-report-provenance.md
 
 Open work is tracked in `TODO.md` (team-level items with `@owner:`/`@blocked_by:`/`@trigger:`
 inline tags); per-milestone steps stay in the plan files above.
@@ -121,12 +122,12 @@ Two-layer build:
   - `resolvers/{python,rust}` — M10: dotted-name / `crate::a::b::Sym` → publisher project + sub-module path + symbol
   - `drift` — detect_missing / detect_extra / detect_stale_todos (M11) plus stale declared-path findings from M12
   - `diff`, `lock`, `indexer`
-  - `store` — SQLite schema **v10** (M12 declared edges/stale declarations; v9 = drift_findings; v8 = cross_project_symbol_refs; v7 = module tables); query helpers `describe_*`, `monorepo_overview`, `project_by_name`, `snapshot_by_id`, `find_edges_filtered`, `find_edges_with_status_since`, `edge_evidence_for`, `search_fts`, `changelog_paginated`, **`refs_to_symbol`**, **`refs_from_project`**, **`drifts_for_project`**, **`find_drifts_filtered`**, **`recent_changelog_labels`**
+  - `store` — SQLite schema **v11** (v11 = per-snapshot project git provenance; M12 declared edges/stale declarations; v9 = drift_findings; v8 = cross_project_symbol_refs; v7 = module tables); query helpers `describe_*`, `monorepo_overview`, `project_by_name`, `snapshot_by_id`, `find_edges_filtered`, `find_edges_with_status_since`, `edge_evidence_for`, `search_fts`, `changelog_paginated`, **`refs_to_symbol`**, **`refs_from_project`**, **`drifts_for_project`**, **`find_drifts_filtered`**, **`recent_changelog_labels`**, **`project_git_states`**
   - `models` — pyclasses incl. M11 `DriftFindingRow`, M10 `SymbolRefRow`, M9 `ModuleRow`/`PublicSymbolRow`/`InternalImportRow`, M8 `DiffEdgeRow`, M7 `EdgeRow`/`EdgeEvidenceRow`/`SearchHit`
   - `facts` — `Manifest`, `McpToolDecl`, `McpClientUse`, `ContractFile`, `DeclaredPath` (M12), `Module`, `PublicSymbol`, `InternalImport`, `ExternalImport` (M10), `IntentDoc`/`IntentItem`/`TodoItem` (M11), `SymbolKind`, `ProjectFacts`
   - `parsers/{python,rust}` append `.prograph/mcp_patterns/{python,rust}.scm` overrides to the bundled tree-sitter queries
   - `ts_queries/{python,rust,js}_symbols.scm` — module-level queries
-  - `migrations/v1.sql..v10.sql` — additive schema chain (v6 = edge_evidence FK repair, v7 = module tables, v8 = cross_project_symbol_refs, v9 = drift_findings, v10 = declared-edge/stale-declaration support)
+  - `migrations/v1.sql..v11.sql` — additive schema chain (v6 = edge_evidence FK repair, v7 = module tables, v8 = cross_project_symbol_refs, v9 = drift_findings, v10 = declared-edge/stale-declaration support, v11 = per-snapshot project git provenance)
 - **`prograph` (Python package):**
   - `cli.py` — `init`, `index`, `status`, `export-md`, `mcp`, `serve`, `drift` (M11/M12),
     `conformance`, `--version`
@@ -136,7 +137,9 @@ Two-layer build:
   - `export/` — Markdown rendering with M12 declared-edge suffixes/stale declarations, M11 Drift findings, M10 Inbound/Outbound references sections
   - `config.py`, `models.py` (incl. `DriftFindingRow`, `SymbolRefRow`, `DiffEdgeRow`, `ModuleRow`, etc.), `paths.py`
   - `conformance/` — intended-graph/v1 loader (manifest.py), verdict engine (engine.py),
-    byte-stable report (report.py); manifest is read at check time, never stored (spec D8)
+    byte-stable report (report.py), report provenance (provenance.py — content hash +
+    report provenance, injectable clock); manifest is read at check time, never stored
+    (spec D8)
 
 ### Frontend DOM safety
 
@@ -207,6 +210,14 @@ PROGRAPH_UPDATE_GOLDEN=1 uv run pytest tests/integration/test_cli_export_md.py::
 ```
 
 Then `git diff` to review the change before committing.
+
+### Published contracts
+
+`contracts/intended-graph/v1/schema.json` and `contracts/conformance-report/v1/schema.json`
+are the vendorable structural schemas consumers pin (steward `GC-ARCH-*`). They are
+**structural only** — cross-object integrity lives in `conformance/manifest.py`; sync with
+the code is enforced by `tests/unit/test_contract_schemas.py` in both directions. Change
+either side only together with the other.
 
 ## Conventions
 
