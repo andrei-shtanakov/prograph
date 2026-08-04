@@ -62,9 +62,10 @@ async def test_find_symbol_references_outbound(indexed: Path):
 
 
 async def test_find_symbol_references_missing_project_arg(indexed: Path):
-    """MCP framework validates inputSchema.required BEFORE dispatch — the result
-    is isError=True with a plain-text "Input validation error" message, NOT a
-    JSON {"error": ...} dict from our handler."""
+    """input_schema.required is validated app-side in build_server before dispatch
+    (v2's lowlevel Server dropped the SDK-side validation v1 had) — the result is
+    is_error=True with a plain-text "Input validation error" message, NOT a JSON
+    {"error": ...} dict from our handler."""
     async with Client(stdio_client(_server_params(indexed))) as client:
         result = await client.call_tool("find_symbol_references", arguments={})
         assert result.is_error is True
@@ -72,9 +73,10 @@ async def test_find_symbol_references_missing_project_arg(indexed: Path):
 
 
 async def test_find_symbol_references_invalid_direction(indexed: Path):
-    """Like the missing-arg case: `direction` is enum-validated in inputSchema,
-    so an unknown value is rejected by MCP before dispatch reaches the handler.
-    Result is isError=True with plain-text message naming the bad value."""
+    """Like the missing-arg case: `direction` is enum-validated against input_schema
+    app-side in build_server, so an unknown value is rejected before dispatch reaches
+    the handler. Result is is_error=True with a plain-text message naming the bad
+    value."""
     async with Client(stdio_client(_server_params(indexed))) as client:
         result = await client.call_tool(
             "find_symbol_references",

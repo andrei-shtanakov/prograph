@@ -60,8 +60,9 @@ async def test_find_drifts_by_kind(indexed: Path):
 
 
 async def test_find_drifts_invalid_kind(indexed: Path):
-    """`kind` is enum-validated in inputSchema -> MCP framework rejects pre-dispatch.
-    Result is isError=True with plain-text message, NOT our JSON {"error": ...}."""
+    """`kind` is enum-validated against the tool's input_schema in build_server (app-side,
+    v2's lowlevel Server dropped the SDK-side validation v1 had). Result is is_error=True
+    with a plain-text message, NOT our JSON {"error": ...}."""
     async with Client(stdio_client(_server_params(indexed))) as client:
         result = await client.call_tool("find_drifts", arguments={"kind": "bogus"})
         assert result.is_error is True

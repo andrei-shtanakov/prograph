@@ -60,6 +60,7 @@ async def test_mcp_list_tools_returns_ten(indexed_mcp_fixture: Path):
 async def test_mcp_monorepo_overview_returns_projects(indexed_mcp_fixture: Path):
     async with Client(stdio_client(_server_params(indexed_mcp_fixture))) as client:
         result = await client.call_tool("monorepo_overview", arguments={})
+        assert result.is_error is False
         payload = json.loads(_text(result.content))
         assert payload["n_projects"] == 6
         project_names = {p["name"] for p in payload["projects"]}
@@ -137,6 +138,7 @@ async def test_mcp_snapshot_info_latest(indexed_mcp_fixture: Path):
 async def test_mcp_unknown_tool_returns_error(indexed_mcp_fixture: Path):
     async with Client(stdio_client(_server_params(indexed_mcp_fixture))) as client:
         result = await client.call_tool("nonexistent_tool", arguments={})
+        assert result.is_error is False
         payload = json.loads(_text(result.content))
         assert "error" in payload
         assert "unknown tool" in payload["error"]
