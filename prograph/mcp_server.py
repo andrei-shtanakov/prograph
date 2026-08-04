@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+import jsonschema
 from mcp.server import Server, ServerRequestContext
 from mcp.server.stdio import stdio_server
 from mcp.types import (
@@ -35,6 +36,7 @@ def build_server(monorepo_root: Path) -> Server:
     """Construct an MCP server bound to the given monorepo's .prograph/graph.db."""
     paths = PrographPaths(monorepo_root=monorepo_root)
     db_path = str(paths.db_path)
+    input_schemas = {tool.name: tool.input_schema for tool in _tool_definitions()}
 
     async def _list_tools(
         ctx: ServerRequestContext, params: PaginatedRequestParams | None
@@ -43,6 +45,17 @@ def build_server(monorepo_root: Path) -> Server:
 
     async def _call(ctx: ServerRequestContext, params: CallToolRequestParams) -> CallToolResult:
         args = params.arguments or {}
+        schema = input_schemas.get(params.name)
+        if schema is not None:
+            try:
+                jsonschema.validate(instance=args, schema=schema)
+            except jsonschema.ValidationError as exc:
+                return CallToolResult(
+                    content=[
+                        TextContent(type="text", text=f"Input validation error: {exc.message}")
+                    ],
+                    is_error=True,
+                )
         try:
             result = await _dispatch(params.name, args, db_path)
         except Exception as exc:

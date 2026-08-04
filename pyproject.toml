@@ -17,6 +17,7 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "pyyaml>=6,<7",
+    "jsonschema>=4.26.0",
 ]
 
 [project.scripts]
@@ -41,7 +42,6 @@ dev = [
     "pyrefly>=0.6",
     "maturin>=1.7,<2",
     "types-pyyaml>=6.0.12.20260724",
-    "jsonschema>=4.26.0",
 ]
 
 [tool.maturin]
