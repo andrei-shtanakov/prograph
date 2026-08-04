@@ -60,7 +60,14 @@ uv run maturin develop            # recompile + reinstall the extension in the v
 - The `extension-module` PyO3 feature is gated on a Cargo feature (`prograph-core/Cargo.toml [features]`) and enabled only via maturin — never by `cargo test` (which needs libpython linking).
 - `tempfile` is unpinned (`"3"`) now that MSRV is 1.85; the old `=3.15.0` pin was only needed under Rust 1.75. `indexmap` remains at 2.7.1 in Cargo.lock — 1.85 now permits 2.14+ (edition2024), but it is left pinned for a minimal diff; `cargo update -p indexmap` relaxes it.
 - `tree-sitter`, `tree-sitter-python`, `tree-sitter-rust` (M4) compile C source via `cc-rs`. First build takes ~60s; subsequent builds reuse the cache.
-- **`mcp` is `>=1.28.1,<2`.** The floor is a security floor — 1.28.1 is the patched version for CVE-2026-59950 / -52869 / -52870. The `<2` ceiling is deliberate: upstream has announced removals for v2 (the WebSocket transport and the experimental tasks API are already deprecated in 1.28.0), and Dependabot only ever raises the *lower* bound, so an unbounded specifier would happily resolve a breaking major. `mcp_server.py` imports only `mcp.server.Server`, `mcp.server.stdio.stdio_server` and `mcp.types` — none of the deprecated surface.
+- **`mcp` is `>=2.0.0,<3`.** Migrated to SDK v2 (2026-08): lowlevel `Server` uses
+  constructor-based handlers (`on_list_tools=`/`on_call_tool=`), tests use the v2
+  `Client`. The `<3` ceiling exists because Dependabot only ever raises the *lower*
+  bound, so an unbounded specifier would silently resolve the next breaking major.
+  The old 1.28.1 CVE floor (CVE-2026-59950 / -52869 / -52870) is subsumed — every
+  2.x postdates the patch. v2's lowlevel `Server` also dropped v1's pre-dispatch
+  inputSchema validation; we restore it app-side in `build_server` (runtime
+  `jsonschema` dep) — three integration tests pin that wire contract.
 
 ## Common commands
 
