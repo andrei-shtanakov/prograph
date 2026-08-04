@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 
 import pytest
-from mcp import ClientSession
-from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp import Client, StdioServerParameters
+from mcp.client.stdio import stdio_client
 from typer.testing import CliRunner
 
 from prograph.cli import app
@@ -37,50 +37,40 @@ def _text(content_list) -> str:
 
 
 async def test_find_drifts_no_filter(indexed: Path):
-    async with stdio_client(_server_params(indexed)) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool("find_drifts", arguments={})
-            payload = json.loads(_text(result.content))
-            assert isinstance(payload, list)
-            assert any(d["kind"] == "missing" for d in payload)
-            assert any(d["kind"] == "extra" for d in payload)
+    async with Client(stdio_client(_server_params(indexed))) as client:
+        result = await client.call_tool("find_drifts", arguments={})
+        payload = json.loads(_text(result.content))
+        assert isinstance(payload, list)
+        assert any(d["kind"] == "missing" for d in payload)
+        assert any(d["kind"] == "extra" for d in payload)
 
 
 async def test_find_drifts_by_project(indexed: Path):
-    async with stdio_client(_server_params(indexed)) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool("find_drifts", arguments={"project_name": "cleaner"})
-            payload = json.loads(_text(result.content))
-            assert payload == []
+    async with Client(stdio_client(_server_params(indexed))) as client:
+        result = await client.call_tool("find_drifts", arguments={"project_name": "cleaner"})
+        payload = json.loads(_text(result.content))
+        assert payload == []
 
 
 async def test_find_drifts_by_kind(indexed: Path):
-    async with stdio_client(_server_params(indexed)) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool("find_drifts", arguments={"kind": "missing"})
-            payload = json.loads(_text(result.content))
-            assert all(d["kind"] == "missing" for d in payload)
+    async with Client(stdio_client(_server_params(indexed))) as client:
+        result = await client.call_tool("find_drifts", arguments={"kind": "missing"})
+        payload = json.loads(_text(result.content))
+        assert all(d["kind"] == "missing" for d in payload)
 
 
 async def test_find_drifts_invalid_kind(indexed: Path):
     """`kind` is enum-validated in inputSchema -> MCP framework rejects pre-dispatch.
     Result is isError=True with plain-text message, NOT our JSON {"error": ...}."""
-    async with stdio_client(_server_params(indexed)) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool("find_drifts", arguments={"kind": "bogus"})
-            assert result.isError is True
-            assert "bogus" in _text(result.content)
+    async with Client(stdio_client(_server_params(indexed))) as client:
+        result = await client.call_tool("find_drifts", arguments={"kind": "bogus"})
+        assert result.is_error is True
+        assert "bogus" in _text(result.content)
 
 
 async def test_find_drifts_kind_stale_declaration_accepted(indexed: Path):
     """Schema accepts kind="stale_declaration"; fixture has none, so [] is valid."""
-    async with stdio_client(_server_params(indexed)) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool("find_drifts", arguments={"kind": "stale_declaration"})
-            payload = json.loads(_text(result.content))
-            assert isinstance(payload, list)
+    async with Client(stdio_client(_server_params(indexed))) as client:
+        result = await client.call_tool("find_drifts", arguments={"kind": "stale_declaration"})
+        payload = json.loads(_text(result.content))
+        assert isinstance(payload, list)
