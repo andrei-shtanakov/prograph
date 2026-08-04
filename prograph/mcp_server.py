@@ -7,9 +7,16 @@ import json
 import sys
 from pathlib import Path
 
-from mcp.server import Server
+from mcp.server import Server, ServerRequestContext
 from mcp.server.stdio import stdio_server
-from mcp.types import TextContent, Tool
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+)
 
 from prograph import _core
 from prograph.models import (
@@ -29,23 +36,27 @@ def build_server(monorepo_root: Path) -> Server:
     paths = PrographPaths(monorepo_root=monorepo_root)
     db_path = str(paths.db_path)
 
-    server: Server = Server("prograph")
+    async def _list_tools(
+        ctx: ServerRequestContext, params: PaginatedRequestParams | None
+    ) -> ListToolsResult:
+        return ListToolsResult(tools=_tool_definitions())
 
-    @server.list_tools()
-    async def _list_tools() -> list[Tool]:
-        return _tool_definitions()
-
-    @server.call_tool()
-    async def _call(name: str, arguments: dict | None) -> list[TextContent]:
-        args = arguments or {}
+    async def _call(ctx: ServerRequestContext, params: CallToolRequestParams) -> CallToolResult:
+        args = params.arguments or {}
         try:
-            result = await _dispatch(name, args, db_path)
+            result = await _dispatch(params.name, args, db_path)
         except Exception as exc:
-            err = {"error": str(exc), "tool": name}
-            return [TextContent(type="text", text=json.dumps(err))]
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            err = {"error": str(exc), "tool": params.name}
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(err))],
+                is_error=False,
+            )
+        return CallToolResult(
+            content=[TextContent(type="text", text=json.dumps(result, indent=2))],
+            is_error=False,
+        )
 
-    return server
+    return Server("prograph", on_list_tools=_list_tools, on_call_tool=_call)
 
 
 async def _dispatch(name: str, args: dict, db_path: str) -> object:
@@ -187,7 +198,7 @@ def _tool_definitions() -> list[Tool]:
                 "edge counts, last 10 changelog entries. The 'hello world' tool for "
                 "an AI agent entering a new monorepo."
             ),
-            inputSchema={"type": "object", "properties": {}, "required": []},
+            input_schema={"type": "object", "properties": {}, "required": []},
         ),
         Tool(
             name="list_projects",
@@ -195,7 +206,7 @@ def _tool_definitions() -> list[Tool]:
                 "List discovered projects. Optionally filter by kind. "
                 "Returns minimal summaries (name, slug, kind)."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "kind": {
@@ -214,7 +225,7 @@ def _tool_definitions() -> list[Tool]:
                 "declared, outbound and inbound edges, last 5 recent changes. "
                 "Use after `list_projects` to drill into a specific project."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "name": {
@@ -231,7 +242,7 @@ def _tool_definitions() -> list[Tool]:
                 "Query the edge graph with optional filters. All four filters are AND'ed. "
                 "Returns full edge rows with from/to names and attrs."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "from": {"type": "string", "description": "Source project name."},
@@ -260,7 +271,7 @@ def _tool_definitions() -> list[Tool]:
                 "contract file paths), declared (the declarer's manifest "
                 "[tool.prograph] entry)."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "edge_id": {
@@ -277,7 +288,7 @@ def _tool_definitions() -> list[Tool]:
                 "Paginated change history. Filter by `since` (snapshot id), "
                 "`entity_kind` (project/edge/contract), and `limit` (default 50)."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "since": {
@@ -304,7 +315,7 @@ def _tool_definitions() -> list[Tool]:
                 "Full-text search over project + contract names and attributes. "
                 "Returns hits with FTS snippet (matched terms wrapped in []) and BM25 rank."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "q": {"type": "string", "description": "FTS query."},
@@ -332,7 +343,7 @@ def _tool_definitions() -> list[Tool]:
                 "counts of projects/edges/changes. Defaults to the latest snapshot when "
                 "`id` is omitted."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {"id": {"type": "integer", "description": "Snapshot id."}},
                 "required": [],
@@ -346,7 +357,7 @@ def _tool_definitions() -> list[Tool]:
                 "which other projects this project imports from. Returns SymbolRefRow records "
                 "with from_module_rel_path + line + to_module_path + to_symbol_name."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "project_name": {
@@ -375,7 +386,7 @@ def _tool_definitions() -> list[Tool]:
                 "'stale_declaration'). Returns DriftFinding records with "
                 "entity_name, source_path:line, confidence."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "project_name": {"type": "string"},
