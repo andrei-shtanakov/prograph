@@ -1,10 +1,9 @@
 # TODO
 
-Open items carry optional inline tags — `@owner:`, `@blocked_by:`, `@trigger:` — in the
-tail of the checkbox line, per the ecosystem handoff
-`../_cowork_output/2026-07-26-plan-fields-and-todo-coverage-handoff.md` §3 — a dev-only
-coordination workspace one level up, outside this repo and absent from a standalone
-clone. Robin's parser
+Open items carry optional plan-fields v2 inline tags — `@owner:`, `@blocked_by:`,
+`@trigger:` — in the tail of the checkbox line. For `@owner:` the canonical values are
+`github:<login>`, `github-team:<org>/<team>`, `repo:<manifest-key>`, and `TBD`; bare
+handle/role values are legacy. Robin's parser
 (robin-runtime#27, merged 2026-07-26) strips them from the item identity key, so tagging
 does not orphan an item's history. An absent tag means "not decided yet" — do not invent
 values to fill the column.
@@ -37,9 +36,9 @@ values to fill the column.
   `docs/superpowers/plans/2026-08-03-prograph-conformance-v1.md`. Follow-ups
   live in the spec's v1.1 list (module-level resolution, `--since`, layering
   sugar). Consumer: steward `GC-ARCH-CONFORMANCE` (@trigger there is
-  "prograph conformance реализован" — теперь выполнен). @owner:andrei
+  "prograph conformance реализован" — теперь выполнен). @owner:github:andrei-shtanakov
   @id:intended-graph-v1
-- [ ] **Graph-vs-registry drift check** @owner:andrei @id:graph-vs-registry-drift-check
+- [ ] **Graph-vs-registry drift check** @owner:github:andrei-shtanakov @id:graph-vs-registry-drift-check
   The invariant — "every link in the integration map has a corresponding graph edge, and
   every graph edge is in the map" — is a fleet-agent check, not a prograph feature; it is
   specified in `../devtools/proposals/2026-07-10-graph-vs-registry-check.md` (status:
@@ -53,7 +52,7 @@ values to fill the column.
   `../prograph-vault/authored/registry/registry.md` ("Integration map"). Kept on this list
   because the check consumes prograph's output; the implementation itself is not ours.
 
-- [ ] **Workspace allowlist and index snapshot have drifted** @owner:andrei @id:workspace-allowlist-index-drift
+- [ ] **Workspace allowlist and index snapshot have drifted** @owner:github:andrei-shtanakov @id:workspace-allowlist-index-drift
   Measured 2026-07-26 against `../.prograph/tracked.toml` (the umbrella workspace's own
   allowlist, one level up — not this repo's):
   `open-prose` is still listed but the directory no longer exists — it was renamed to
