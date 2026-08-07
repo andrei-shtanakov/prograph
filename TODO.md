@@ -1,10 +1,11 @@
 # TODO
 
-Open items carry optional inline tags — `@owner:`, `@blocked_by:`, `@trigger:` — in the
-tail of the checkbox line, per the ecosystem handoff
-`../_cowork_output/2026-07-26-plan-fields-and-todo-coverage-handoff.md` §3 — a dev-only
-coordination workspace one level up, outside this repo and absent from a standalone
-clone. Robin's parser
+Open items carry optional plan-fields v2 inline tags — `@owner:`, `@blocked_by:`,
+`@trigger:`, `@id:` — in the tail of the checkbox line. For `@owner:` the canonical
+values are `github:<login>`, `github-team:<org>/<team>`, `repo:<manifest-key>`, and
+`TBD`; `<manifest-key>` is the canonical repository key declared in the workspace
+manifest, and bare handle/role values are legacy. `@id:` is the stable item identifier
+used by canonical `todo://<repo>/<id>` references. Robin's parser
 (robin-runtime#27, merged 2026-07-26) strips them from the item identity key, so tagging
 does not orphan an item's history. An absent tag means "not decided yet" — do not invent
 values to fill the column.
@@ -28,7 +29,7 @@ values to fill the column.
   Related noise for any graph tool: repo namespace vs runtime service-id split
   (repo `proctor` vs service `proctor-a`, ADR 2026-07-07) — declared edges should name
   repo paths, not runtime ids.
-- [x] **Intended graph v1 + `prograph conformance`** — shipped: strict
+- [x] **Intended graph v1 + `prograph conformance`** — shipped: strict @owner:github:andrei-shtanakov @id:intended-graph-v1
   `intended-graph/v1` loader, three-valued verdict engine (honest
   `unsupported-resolution` per D2), finding taxonomy v1, CLI with byte-stable
   JSON and 0/1/2 exit codes; WS-005 manifest (steward@727a28d) vendored as
@@ -37,9 +38,8 @@ values to fill the column.
   `docs/superpowers/plans/2026-08-03-prograph-conformance-v1.md`. Follow-ups
   live in the spec's v1.1 list (module-level resolution, `--since`, layering
   sugar). Consumer: steward `GC-ARCH-CONFORMANCE` (@trigger there is
-  "prograph conformance реализован" — теперь выполнен). @owner:andrei
-  @id:intended-graph-v1
-- [ ] **Graph-vs-registry drift check** @owner:andrei @id:graph-vs-registry-drift-check
+  "prograph conformance реализован" — теперь выполнен).
+- [ ] **Graph-vs-registry drift check** @owner:github:andrei-shtanakov @id:graph-vs-registry-drift-check
   The invariant — "every link in the integration map has a corresponding graph edge, and
   every graph edge is in the map" — is a fleet-agent check, not a prograph feature; it is
   specified in `../devtools/proposals/2026-07-10-graph-vs-registry-check.md` (status:
@@ -53,7 +53,7 @@ values to fill the column.
   `../prograph-vault/authored/registry/registry.md` ("Integration map"). Kept on this list
   because the check consumes prograph's output; the implementation itself is not ours.
 
-- [ ] **Workspace allowlist and index snapshot have drifted** @owner:andrei @id:workspace-allowlist-index-drift
+- [ ] **Workspace allowlist and index snapshot have drifted** @owner:github:andrei-shtanakov @id:workspace-allowlist-index-drift
   Measured 2026-07-26 against `../.prograph/tracked.toml` (the umbrella workspace's own
   allowlist, one level up — not this repo's):
   `open-prose` is still listed but the directory no longer exists — it was renamed to
