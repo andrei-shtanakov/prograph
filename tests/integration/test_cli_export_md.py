@@ -1,5 +1,6 @@
 """Tests for `prograph index --export-md` and `prograph export-md`."""
 
+import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -159,6 +160,37 @@ def test_golden_monorepo_mcp(tmp_path: Path, md_matcher):
     produced = _run_full_export("monorepo_mcp", tmp_path)
     golden = Path(__file__).resolve().parents[1] / "fixtures" / "monorepo_mcp" / "golden"
     md_matcher(produced, golden)
+
+
+def test_export_md_survives_case_only_project_rename(tmp_path: Path):
+    """Inbox #30 regression: on a case-insensitive FS (macOS APFS, Windows) a
+    case-only rename (`Maestro/` -> `maestro/`) used to lose the page — the
+    exporter wrote `projects/maestro.md` into the *same on-disk file* as the
+    stale `Maestro.md` (case-preserving FS keeps the old entry name), then the
+    case-sensitive stale cleanup unlinked the freshly written page. On a
+    case-sensitive FS the two names are distinct files and the old page is
+    simply removed as stale — every assertion below must hold on both."""
+    (tmp_path / "Maestro").mkdir()
+    (tmp_path / "Maestro" / "pyproject.toml").write_text("[project]\nname='maestro'\n")
+    runner.invoke(app, ["init", "--monorepo", str(tmp_path)])
+    result = runner.invoke(app, ["index", "--monorepo", str(tmp_path), "--export-md"])
+    assert result.exit_code == 0, result.stdout
+
+    paths = PrographPaths(monorepo_root=tmp_path)
+    assert (paths.projects_md_dir / "Maestro.md").is_file()
+
+    (tmp_path / "Maestro").rename(tmp_path / "maestro")
+    result = runner.invoke(app, ["index", "--monorepo", str(tmp_path), "--export-md", "--json"])
+    assert result.exit_code == 0, result.stdout
+    payload = json.loads(result.stdout)
+
+    # Page survives under the new exact case; the old-cased entry is gone.
+    on_disk = sorted(p.name for p in paths.projects_md_dir.rglob("*.md"))
+    assert "maestro.md" in on_disk
+    assert "Maestro.md" not in on_disk
+    # The index links the new name, and every reported project has a page.
+    assert "[[maestro]]" in paths.index_md_path.read_text(encoding="utf-8")
+    assert len(on_disk) == payload["n_projects"]
 
 
 def test_reindex_md_stable_modulo_timestamps(tmp_path: Path):

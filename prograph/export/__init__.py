@@ -46,18 +46,44 @@ def _compute_parent_map(
     return out
 
 
+def _write_page(out_path: Path, content: str) -> None:
+    """Write a page so the on-disk entry name matches `out_path` exactly.
+
+    On a case-insensitive, case-preserving FS (macOS APFS, Windows) a plain
+    write into `maestro.md` lands in an existing `Maestro.md` and keeps the
+    old entry name — the stale cleanup then mistakes the fresh page for the
+    old one. Unlinking first drops any aliased entry so the new exact name
+    is created.
+    """
+    out_path.unlink(missing_ok=True)
+    out_path.write_text(content, encoding="utf-8")
+
+
 def _cleanup_stale_project_mds(projects_dir: Path, valid_paths: set[Path]) -> None:
     """Delete any prograph-generated MD under `projects_dir` that isn't in
     `valid_paths`. Removes flat *.md files from previous layouts, empty
     subdirs, and any MDs whose corresponding project no longer exists.
 
     Safety: only deletes files whose first line is the `<!-- prograph:generated -->`
-    marker — never touches files a user wrote by hand.
+    marker — never touches files a user wrote by hand. Membership is checked by
+    file identity (dev, inode), not path string, so a name that merely aliases a
+    freshly written page (case-insensitive FS) is never deleted.
     """
     if not projects_dir.is_dir():
         return
+    valid_ids: set[tuple[int, int]] = set()
+    for p in valid_paths:
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        valid_ids.add((st.st_dev, st.st_ino))
     for md in projects_dir.rglob("*.md"):
-        if md in valid_paths:
+        try:
+            st = md.stat()
+        except OSError:
+            continue
+        if (st.st_dev, st.st_ino) in valid_ids:
             continue
         try:
             first = md.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
@@ -164,7 +190,7 @@ def export_snapshot(monorepo_root: Path, export_root: Path | None = None) -> Exp
         else:
             out_path = paths.projects_md_dir / f"{desc.slug}.md"
 
-        out_path.write_text(md, encoding="utf-8")
+        _write_page(out_path, md)
         written.add(out_path)
         n_projects += 1
 
