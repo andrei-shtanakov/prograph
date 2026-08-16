@@ -53,6 +53,18 @@ values to fill the column.
   `../prograph-vault/authored/registry/registry.md` ("Integration map"). Kept on this list
   because the check consumes prograph's output; the implementation itself is not ours.
 
+- [ ] **export-md loses a project page on case-only rename (case-insensitive FS).** @owner:github:andrei-shtanakov @id:export-md-case-rename-loss
+  Inbox issue #30 (slug: `export-md-case-rename-loss`, from: devtools, accepted
+  2026-08-16). On APFS/Windows, after `Maestro/` → `maestro/`, `index --export-md`
+  writes `projects/maestro.md` into the *same on-disk file* as the old
+  `Maestro.md` (case-preserving FS keeps the old entry name), then
+  `_cleanup_stale_project_mds` compares paths case-sensitively, treats the
+  on-disk `Maestro.md` as stale and unlinks the freshly written page — silently:
+  exit 0, `--json` counters unchanged, broken `[[maestro]]` wiki-link in
+  `index.md`. Fix: write path removes a case-aliased old entry so the new
+  case lands on disk, and cleanup compares file identity (dev/inode), not path
+  strings; regression test covers page presence, index link, and counters.
+
 - [ ] **Workspace allowlist and index snapshot have drifted** @owner:github:andrei-shtanakov @id:workspace-allowlist-index-drift
   Measured 2026-07-26 against `../.prograph/tracked.toml` (the umbrella workspace's own
   allowlist, one level up — not this repo's):
