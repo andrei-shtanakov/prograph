@@ -258,8 +258,9 @@ either side only together with the other.
   `gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'`.
 - **Не мержить.** Мерж делает пользователь.
 - После мержа пользователем: `git switch master && git pull --ff-only`, затем удалить
-  влитую ветку в **обеих половинах**: локально `git branch -d` (после squash-мержа `-d`
-  откажется — сверить, что `git diff master <ветка>` пуст, и удалить `-D`) и на origin
+  влитую ветку в **обеих половинах**: локально `git branch -d <ветка>` (после squash-мержа
+  `-d` откажется — сверить, что `git diff master <ветка>` пуст, и удалить
+  `git branch -D <ветка>`) и на origin
   `git push origin --delete <ветка>`, если GitHub не удалил сам; затем `git fetch --prune`.
 - Никогда не делать force-push в общие ветки; не трогать другие репо (см. scope выше).
 - На `master` ruleset требует зелёный `governance / gate` + 1 approving review +
@@ -293,3 +294,6 @@ Shipped/runtime-код никогда не читает и не резолвит
 могут только dev-тулинг самого воркспейса и документация. Канонические факты живут
 в репо-владельце (пример: SSOT agents-catalog — `atp-platform/method/agents-catalog.toml`,
 ADR-ECO-003). Полное правило (SSOT): `../prograph-vault/authored/rules/cowork-output.md`.
+Нюанс индексатора: prograph может ИНДЕКСИРОВАТЬ `_cowork_output/` как часть
+анализируемого дерева (данные на входе, см. план M4) — запрет о другом: не
+ЗАВИСЕТЬ от его наличия и не резолвить пути под ним в shipped-логике.
