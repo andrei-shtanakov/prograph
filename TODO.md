@@ -39,7 +39,7 @@ values to fill the column.
   live in the spec's v1.1 list (module-level resolution, `--since`, layering
   sugar). Consumer: steward `GC-ARCH-CONFORMANCE` (@trigger there is
   "prograph conformance реализован" — теперь выполнен).
-- [ ] **Graph-vs-registry drift check** @owner:github:andrei-shtanakov @id:graph-vs-registry-drift-check
+- [ ] **Graph-vs-registry drift check** @owner:github:andrei-shtanakov @id:graph-vs-registry-drift-check @epic:eco.knowledge-graph
   The invariant — "every link in the integration map has a corresponding graph edge, and
   every graph edge is in the map" — is a fleet-agent check, not a prograph feature; it is
   specified in `../devtools/proposals/2026-07-10-graph-vs-registry-check.md` (status:
@@ -67,7 +67,7 @@ values to fill the column.
   `test_export_md_survives_case_only_project_rename` covers page presence,
   index link, and counters.
 
-- [ ] **Workspace allowlist and index snapshot have drifted** @owner:github:andrei-shtanakov @id:workspace-allowlist-index-drift
+- [ ] **Workspace allowlist and index snapshot have drifted** @owner:github:andrei-shtanakov @id:workspace-allowlist-index-drift @epic:eco.knowledge-graph
   Measured 2026-07-26 against `../.prograph/tracked.toml` (the umbrella workspace's own
   allowlist, one level up — not this repo's):
   `open-prose` is still listed but the directory no longer exists — it was renamed to
