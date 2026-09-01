@@ -67,6 +67,20 @@ values to fill the column.
   `test_export_md_survives_case_only_project_rename` covers page presence,
   index link, and counters.
 
+- [x] **Test assertions broke on a line-wrapped file name (CI-only failure).** ✅ @owner:github:andrei-shtanakov @id:test-output-linewrap-fragility
+  Inbox issue #45 (slug: `test-output-linewrap-fragility`, from: devtools, accepted
+  2026-09-01). First CI run of the suite (PR #44, job `test`) failed twice:
+  `test_index_malformed_tracked_toml_exits_1` / `test_serve_malformed_tracked_toml_exits_1`
+  assert `"tracked.toml" in (stdout + stderr)`, but Rich word-wrapped the long runner
+  tmp path *inside* the file name (`.prograph/tracked` \n `.toml`). Rich takes its width
+  from `COLUMNS` when stdout is not a tty — 80 on any runner — so where the fold lands
+  is a function of path length; locally it fell elsewhere and the tests passed.
+  Fixed at the render side rather than in the assertions: `err_console` is now
+  `Console(stderr=True, soft_wrap=True)`, because a diagnostic that names a file must
+  stay copy-pasteable at any terminal width. Regression test
+  `test_malformed_tracked_error_keeps_path_unwrapped` pins the whole path (not just the
+  base name) at `COLUMNS=80`. Devtools' readiness signal: job `test` green on #44.
+
 - [ ] **Workspace allowlist and index snapshot have drifted** @owner:github:andrei-shtanakov @id:workspace-allowlist-index-drift @epic:eco.knowledge-graph
   Measured 2026-07-26 against `../.prograph/tracked.toml` (the umbrella workspace's own
   allowlist, one level up — not this repo's):
