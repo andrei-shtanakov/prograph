@@ -69,6 +69,24 @@ def test_index_malformed_tracked_toml_exits_1(tmp_path: Path) -> None:
     assert "tracked.toml" in (result.stdout + result.stderr)
 
 
+def test_malformed_tracked_error_keeps_path_unwrapped(tmp_path: Path, monkeypatch) -> None:
+    """A narrow terminal must not fold the offending path mid-filename.
+
+    Rich takes its width from COLUMNS when stdout is not a tty (every CI runner:
+    80 columns), and a long tmp path used to be word-wrapped *inside*
+    `tracked.toml` — so `"tracked.toml" in output` held locally on a wide
+    terminal and failed on CI. Diagnostics that name a file must stay
+    copy-pasteable, so the path is asserted whole.
+    """
+    monkeypatch.setenv("COLUMNS", "80")
+    deep = tmp_path / ("d" * 40) / ("e" * 40)
+    deep.mkdir(parents=True)
+    paths = _init_with_allowlist(deep, "projects = [broken\n")
+    result = runner.invoke(app, ["index", "--monorepo", str(deep)])
+    assert result.exit_code == 1
+    assert str(paths.tracked_path) in (result.stdout + result.stderr)
+
+
 def test_index_discover_json_embeds_audit(tmp_path: Path) -> None:
     _setup(tmp_path)
     _init_with_allowlist(tmp_path, 'projects = ["tracked_proj", "ghost"]\n')

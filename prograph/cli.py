@@ -21,7 +21,10 @@ from prograph.models import IndexSummary, ProjectCandidate, SnapshotInfo
 from prograph.paths import PrographPaths
 
 console = Console()
-err_console = Console(stderr=True)
+# soft_wrap: diagnostics on stderr name files and paths — folding one at the
+# terminal width breaks the name mid-token and makes it uncopyable (an
+# 80-column CI runner split `.prograph/tracked` / `.toml` across two lines).
+err_console = Console(stderr=True, soft_wrap=True)
 
 app = typer.Typer(
     name="prograph",
