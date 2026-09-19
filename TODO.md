@@ -81,6 +81,25 @@ values to fill the column.
   `test_malformed_tracked_error_keeps_path_unwrapped` pins the whole path (not just the
   base name) at `COLUMNS=80`. Devtools' readiness signal: job `test` green on #44.
 
+- [x] **Вендор-копия review-kit отстала от апстрима на два релиза.** ✅ @owner:github:andrei-shtanakov @id:review-kit-catchup-scope
+  Inbox issue #52 (slug: `review-kit-catchup-scope`, from: steward — срез B области
+  ревью, steward#172; принято 2026-09-19). Запрос называл два отставших релиза;
+  к моменту работы первый (харнесс-слой, `scripts/review/harness-claude`, steward
+  @ a2d7e71) уже был влит волной devtools#228 — PR #49 и #50. Оставался релиз
+  2026-09-19 «срез B области ревью» (steward @ c18bf87): прозаический диапазон
+  больше не доходит до модели — после фильтра ревьюировать нечего, код выхода 5,
+  ревьюер не вызывается; смешанный PR уходит одной кодовой частью. Новый член
+  кита — `scripts/review/prose-paths.env` (пиненая копия
+  `devtools contracts/review-scope/v1/prose-paths.env`).
+  Shipped в PR #53 (мерж 2026-09-19): все восемь членов инвентаря побайтово равны
+  `steward@c18bf87`, режимы выровнены по апстриму (`cp` режим не переносит, а он
+  часть записи дерева: `checksum.sh` и `collect-context.sh` 100755 → 100644).
+  Аттестовано детерминированно — `devtools/attest-vendor.sh prograph 53`, 8 из 8
+  членов совпали; модельного ревью в PR намеренно нет.
+  Вне состава: `install-hook.sh` — штатный сосед кита, вне инвентаря (§5);
+  `.github/codex/review-prompt.md` — настроенные репо-данные, вне copy-integrity;
+  правка `.github/hooks/pre-push` из релиза неприменима — такого хука здесь нет.
+
 - [ ] **Workspace allowlist and index snapshot have drifted** @owner:github:andrei-shtanakov @id:workspace-allowlist-index-drift @epic:eco.knowledge-graph
   Measured 2026-07-26 against `../.prograph/tracked.toml` (the umbrella workspace's own
   allowlist, one level up — not this repo's):
