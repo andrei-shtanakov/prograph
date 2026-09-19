@@ -98,19 +98,41 @@ uv run ruff format --check .
 uv run pyrefly check 'prograph/**/*.py' 'tests/unit/**/*.py' 'tests/integration/**/*.py'
 ```
 
-### CI: the local checks above ARE the gate
+### CI: what the remote runs, and what it still does not
 
-`.github/workflows/` holds exactly one workflow — `governance.yml`, a thin caller into the
-umbrella's reusable governance gate (pinned at `governance-v1`). **There is no workflow that
-runs pytest, cargo test, ruff, clippy or pyrefly.** Nothing on the remote will catch a broken
-test or a type error, so run the block above locally before pushing and before claiming a
-change is green; a passing PR check page means the governance gate passed, not that the code
-works.
+`.github/workflows/` holds two workflows:
 
-`governance / gate` is a required status check on `master`, alongside a ruleset that requires
-one approving review plus a code-owner review (`.github/CODEOWNERS` → `@andrei-shtanakov`).
-A PR sitting at `mergeStateStatus: BLOCKED` with green checks is waiting on that review, not
-on CI.
+- **`ci.yml`** — job `test` (added by PR #44, devtools wave 2026-09-01): `uv sync --frozen`
+  then `uv run --frozen pytest -q` on Python 3.12, for every PR and every push to `master`.
+  Since `uv sync` invokes maturin, a Rust **compile** error fails this job — but `cargo test`
+  does not run. pytest uses the default selection, so `realmonorepo` and `bench` stay
+  excluded (`addopts` in `pyproject.toml`).
+- **`governance.yml`** — a thin caller into the umbrella's reusable governance gate (the
+  checks it runs live under `ci/governance/`). No code is copied here.
+
+**Nothing on the remote runs `cargo test`, `cargo fmt`, `clippy`, `ruff` or `pyrefly`**, so
+run the command block above locally before pushing and before claiming a change is green: a
+green PR page means the Python suite and the governance gate passed, not that the crate's
+tests, the formatters or the type checker did.
+
+The governance caller pins the reusable workflow by full commit SHA
+(`51513e8aa0935e76b3327d6298409a683960a6fb`). Its inline comment calls that pin the
+`governance-v2` tag, but no `governance-*` tag points at it — `governance-v2` is `97c84db3`,
+`governance-v1` is `3058d377`. The SHA is the fact; the comment is stale.
+
+Two active rulesets on `master`, both also blocking branch deletion and force-push:
+
+- `Default Branch Restriction` — PR required, **1 approving review**, required status check
+  `test`. `require_code_owner_review` is **false**: `.github/CODEOWNERS` (`* @andrei-shtanakov`)
+  exists but this ruleset does not enforce it, so an approval from the ai-prosto review
+  profile alone satisfies the review requirement.
+- `governance-gate` — required status check `governance / gate`.
+
+So a PR at `mergeStateStatus: BLOCKED` with an approval already in place is waiting on `test`
+or on the gate, not on a human. `dismiss_stale_reviews_on_push` is false, which means an
+approval survives a force-push: a rebased head can read `APPROVED` from a review of the old
+head. Re-run the review (or the vendor attestation) after a force-push instead of trusting
+that flag.
 
 There is no `.github/dependabot.yml`; Dependabot PRs here are **security** updates opened
 from the alerts on the default branch, which is why they appear without a version-update
@@ -279,9 +301,10 @@ either side only together with the other.
   `git branch -D <ветка>`) и на origin
   `git push origin --delete <ветка>`, если GitHub не удалил сам; затем `git fetch --prune`.
 - Никогда не делать force-push в общие ветки; не трогать другие репо (см. scope выше).
-- На `master` ruleset требует зелёный `governance / gate` + 1 approving review +
-  ревью code owner'а, поэтому PR с зелёными чеками остаётся `BLOCKED` до ревью —
-  это нормально, не повод что-то чинить.
+- На `master` рулсеты требуют зелёные `governance / gate` и `test` + 1 approving review.
+  Ревью code owner'а НЕ требуется (`require_code_owner_review: false`), поэтому одобрения
+  от профиля ai-prosto достаточно; подробности и остальные факты гейта — в разделе «CI»
+  выше. PR с одобрением, но `BLOCKED`, ждёт чеков, а не человека.
 - Полное правило (SSOT): `../prograph-vault/authored/rules/git-workflow.md`.
 
 ## Входящие запросы (inbox)
