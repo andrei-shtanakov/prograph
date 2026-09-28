@@ -103,7 +103,8 @@ uv run pyrefly check 'prograph/**/*.py' 'tests/unit/**/*.py' 'tests/integration/
 `.github/workflows/` holds two workflows:
 
 - **`ci.yml`** — job `test` (added by PR #44, devtools wave 2026-09-01): `uv sync --frozen`
-  then `uv run --frozen pytest -q` on Python 3.12, for every PR and every push to `master`.
+  then `uv run --frozen pytest -q` and `uv run --frozen ruff check .` (added by #60) on
+  Python 3.12, for every PR and every push to `master`.
   Since `uv sync` invokes maturin, a Rust **compile** error fails this job — but `cargo test`
   does not run. pytest uses the default selection, so `realmonorepo` and `bench` stay
   excluded (`addopts` in `pyproject.toml`).
