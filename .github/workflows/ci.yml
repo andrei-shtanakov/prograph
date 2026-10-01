@@ -22,4 +22,4 @@ jobs:
       - run: uv run --frozen pytest -q
       - run: uv run --frozen ruff check .
       # Тулчейн и clippy — из rust-toolchain.toml (inbox #59, slug: ci-clippy).
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings

@@ -104,7 +104,7 @@ values to fill the column.
   Inbox issue #59 (slug: `ci-clippy`, from: devtools — selfcheck S4, замер 2026-09-28;
   принято 2026-10-01). prograph был единственной Rust-целью флота без clippy в CI
   владельца. Job `test` в `ci.yml` теперь последним шагом гоняет
-  `cargo clippy --workspace --all-targets -- -D warnings`; тулчейн 1.85 и clippy берутся из
+  `cargo clippy --locked --workspace --all-targets -- -D warnings`; тулчейн 1.85 и clippy берутся из
   `rust-toolchain.toml` (rustup на раннере ставит его ещё на `uv sync`). Локально на ветке —
   0 предупреждений. `cargo test` и `cargo fmt` в CI по-прежнему нет.
 

@@ -104,7 +104,7 @@ uv run pyrefly check 'prograph/**/*.py' 'tests/unit/**/*.py' 'tests/integration/
 
 - **`ci.yml`** — job `test` (added by PR #44, devtools wave 2026-09-01): `uv sync --frozen`
   then `uv run --frozen pytest -q`, `uv run --frozen ruff check .` (added by #60) and
-  `cargo clippy --workspace --all-targets -- -D warnings` (inbox #59; toolchain + clippy from
+  `cargo clippy --locked --workspace --all-targets -- -D warnings` (inbox #59; toolchain + clippy from
   `rust-toolchain.toml`) on Python 3.12, for every PR and every push to `master`.
   Since `uv sync` invokes maturin, a Rust **compile** error fails this job — but `cargo test`
   does not run. pytest uses the default selection, so `realmonorepo` and `bench` stay
