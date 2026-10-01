@@ -103,18 +103,19 @@ uv run pyrefly check 'prograph/**/*.py' 'tests/unit/**/*.py' 'tests/integration/
 `.github/workflows/` holds two workflows:
 
 - **`ci.yml`** — job `test` (added by PR #44, devtools wave 2026-09-01): `uv sync --frozen`
-  then `uv run --frozen pytest -q` and `uv run --frozen ruff check .` (added by #60) on
-  Python 3.12, for every PR and every push to `master`.
+  then `uv run --frozen pytest -q`, `uv run --frozen ruff check .` (added by #60) and
+  `cargo clippy --workspace --all-targets -- -D warnings` (inbox #59; toolchain + clippy from
+  `rust-toolchain.toml`) on Python 3.12, for every PR and every push to `master`.
   Since `uv sync` invokes maturin, a Rust **compile** error fails this job — but `cargo test`
   does not run. pytest uses the default selection, so `realmonorepo` and `bench` stay
   excluded (`addopts` in `pyproject.toml`).
 - **`governance.yml`** — a thin caller into the umbrella's reusable governance gate (the
   checks it runs live under `ci/governance/`). No code is copied here.
 
-**Nothing on the remote runs `cargo test`, `cargo fmt`, `clippy`, `ruff` or `pyrefly`**, so
+**Nothing on the remote runs `cargo test`, `cargo fmt`, `ruff format` or `pyrefly`**, so
 run the command block above locally before pushing and before claiming a change is green: a
-green PR page means the Python suite and the governance gate passed, not that the crate's
-tests, the formatters or the type checker did.
+green PR page means the Python suite, the linters and the governance gate passed, not that
+the crate's tests, the formatters or the type checker did.
 
 The governance caller pins the reusable workflow by full commit SHA
 (`51513e8aa0935e76b3327d6298409a683960a6fb`). Its inline comment calls that pin the

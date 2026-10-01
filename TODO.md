@@ -100,6 +100,14 @@ values to fill the column.
   `.github/codex/review-prompt.md` — настроенные репо-данные, вне copy-integrity;
   правка `.github/hooks/pre-push` из релиза неприменима — такого хука здесь нет.
 
+- [x] **CI: clippy `-D warnings` для `prograph-core`.** ✅ @owner:github:andrei-shtanakov @id:ci-clippy
+  Inbox issue #59 (slug: `ci-clippy`, from: devtools — selfcheck S4, замер 2026-09-28;
+  принято 2026-10-01). prograph был единственной Rust-целью флота без clippy в CI
+  владельца. Job `test` в `ci.yml` теперь последним шагом гоняет
+  `cargo clippy --workspace --all-targets -- -D warnings`; тулчейн 1.85 и clippy берутся из
+  `rust-toolchain.toml` (rustup на раннере ставит его ещё на `uv sync`). Локально на ветке —
+  0 предупреждений. `cargo test` и `cargo fmt` в CI по-прежнему нет.
+
 - [ ] **Workspace allowlist and index snapshot have drifted** @owner:github:andrei-shtanakov @id:workspace-allowlist-index-drift @epic:eco.knowledge-graph
   Measured 2026-07-26 against `../.prograph/tracked.toml` (the umbrella workspace's own
   allowlist, one level up — not this repo's):
